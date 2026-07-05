@@ -8,7 +8,7 @@ import {
   ITEM_RESPAWN_SEC, ITEM_PICKUP_RANGE, THROW_SELF_HIT_GRACE_SEC,
   POWERUPS, POWERUP_TYPE_KEYS, POWERUP_RESPAWN_SEC, POWERUP_PICKUP_RANGE, POWERUP_SPAWNS,
   CROWN, CROWN_SPAWNS,
-  CTO_TASKS, CTO_TASK_REWARD_CROWN, CTO_TASK_GAP_SEC, CTO_TASK_FIRST_DELAY_SEC,
+  CTO_TASKS, CTO_TASK_REWARD_CROWN, CTO_TASK_GAP_SEC, CTO_TASK_FIRST_DELAY_SEC, GRAB,
   MAIN_FLOOR_HEIGHT, FLOOR_WALL,
   OBSTACLES, ITEM_SPAWNS, PLAYER_SPAWNS, AVATARS, clamp, normalizeAngleDiff
 } from './shared/constants.js';
@@ -58,6 +58,7 @@ class Room {
     this.kingId = null;
     this.currentTask = null;
     this.taskTimeoutHandle = null;
+    this.thrownPlayers = new Map();
     this.itemSeq = 0;
     this.projSeq = 0;
     this.powerupSeq = 0;
@@ -233,9 +234,52 @@ function dropHeldItem(room, player) {
   room.io.to(room.code).emit('itemDropped', { id: item.id, type: item.type, x: item.x, y: item.y });
 }
 
+function dropCarriedPlayer(room, carrier) {
+  if (!carrier.carrying) return;
+  const carried = room.players.get(carrier.carrying);
+  carrier.carrying = null;
+  if (!carried) return;
+  carried.carriedBy = null;
+  carried.status = 'active';
+  carried.x = carrier.x;
+  carried.y = carrier.y;
+  carried.invulnerableUntil = Date.now() + 400;
+  room.io.to(room.code).emit('playerDropped', { id: carried.id, x: carried.x, y: carried.y });
+}
+
+function landThrownPlayer(room, thrown, x, y, damage) {
+  thrown.x = x;
+  thrown.y = y;
+  thrown.hp -= damage;
+  thrown.damageTaken += damage;
+
+  let koed = false;
+  let eliminated = false;
+  if (thrown.hp <= 0) {
+    koed = true;
+    thrown.hp = 0;
+    thrown.lives -= 1;
+    dropHeldItem(room, thrown);
+    if (thrown.lives <= 0) {
+      thrown.status = 'eliminated';
+      eliminated = true;
+    } else {
+      thrown.status = 'down';
+      scheduleRespawn(room, thrown);
+    }
+  } else {
+    thrown.status = 'active';
+    thrown.invulnerableUntil = Date.now() + 600;
+  }
+
+  return { x: thrown.x, y: thrown.y, newHp: thrown.hp, newLives: thrown.lives, koed, eliminated };
+}
+
 function applyDamage(room, target, damage, dirx, diry, knockback, attackerId) {
   if (target.status !== 'active') return null;
   if (Date.now() < target.invulnerableUntil) return null;
+
+  dropCarriedPlayer(room, target);
 
   target.hp -= damage;
   target.damageTaken += damage;
@@ -313,13 +357,15 @@ function beginPlaying(room) {
       lastPunch: 0, lastKick: 0, holding: null, damageDealt: 0, damageTaken: 0, status: 'active',
       invulnerableUntil: Date.now() + MATCH.respawnInvulnSec * 1000,
       speedBuffUntil: 0, speedBuffMultiplier: 1, damageBuffUntil: 0, damageBuffMultiplier: 1,
-      crownScore: 0, taskProgress: 0, taskDone: false, lastDamagedAt: 0
+      crownScore: 0, taskProgress: 0, taskDone: false, lastDamagedAt: 0,
+      carrying: null, carriedBy: null, lastGrab: 0, grabbedAt: 0
     });
   });
 
   room.items.clear();
   room.projectiles.clear();
   room.powerups.clear();
+  room.thrownPlayers.clear();
   room.kingId = null;
   room.currentTask = null;
   if (room.taskTimeoutHandle) { clearTimeout(room.taskTimeoutHandle); room.taskTimeoutHandle = null; }
@@ -399,6 +445,81 @@ function tick(room) {
 
   if (room.projectiles.size > 0) {
     room.io.to(room.code).emit('projectileSync', [...room.projectiles.values()].map(p => ({ id: p.id, x: p.x, y: p.y })));
+  }
+
+  for (const [id, tp] of [...room.thrownPlayers.entries()]) {
+    const thrown = room.players.get(id);
+    if (!thrown) { room.thrownPlayers.delete(id); continue; }
+
+    tp.x += tp.vx * dt;
+    tp.y += tp.vy * dt;
+    tp.traveled += Math.hypot(tp.vx * dt, tp.vy * dt);
+
+    let landed = false;
+    let impactDamage = 0;
+    let hitTarget = null;
+
+    if (tp.x < PLAYER.radius || tp.x > ARENA.width - PLAYER.radius || tp.y < PLAYER.radius || tp.y > ARENA.height - PLAYER.radius) {
+      tp.x = clamp(tp.x, PLAYER.radius, ARENA.width - PLAYER.radius);
+      tp.y = clamp(tp.y, PLAYER.radius, ARENA.height - PLAYER.radius);
+      landed = true;
+      impactDamage = GRAB.damageToThrown;
+    }
+
+    if (!landed) {
+      for (const ob of OBSTACLES) {
+        if (tp.x > ob.x && tp.x < ob.x + ob.w && tp.y > ob.y && tp.y < ob.y + ob.h) {
+          landed = true;
+          impactDamage = GRAB.damageToThrown;
+          break;
+        }
+      }
+    }
+
+    if (!landed) {
+      for (const other of room.players.values()) {
+        if (other.id === id || other.id === tp.thrownBy || other.status !== 'active') continue;
+        if (Date.now() < other.invulnerableUntil) continue;
+        if (Math.hypot(other.x - tp.x, other.y - tp.y) < PLAYER.radius * 1.6) {
+          hitTarget = other;
+          landed = true;
+          impactDamage = GRAB.damageToThrown;
+          break;
+        }
+      }
+    }
+
+    if (!landed && tp.traveled >= GRAB.maxRange) {
+      landed = true;
+    }
+
+    if (landed) {
+      room.thrownPlayers.delete(id);
+      let hitResult = null;
+      if (hitTarget) {
+        const dist = Math.hypot(hitTarget.x - tp.x, hitTarget.y - tp.y);
+        const dirx = dist > 0 ? (hitTarget.x - tp.x) / dist : 1;
+        const diry = dist > 0 ? (hitTarget.y - tp.y) / dist : 0;
+        hitResult = applyDamage(room, hitTarget, GRAB.damageToTarget, dirx, diry, GRAB.knockback, tp.thrownBy);
+      }
+      const landResult = landThrownPlayer(room, thrown, tp.x, tp.y, impactDamage);
+      room.io.to(room.code).emit('playerLanded', {
+        id: thrown.id, x: landResult.x, y: landResult.y, newHp: landResult.newHp, newLives: landResult.newLives,
+        koed: landResult.koed, eliminated: landResult.eliminated,
+        hit: hitResult ? { targetId: hitTarget.id, ...hitResult } : null
+      });
+    }
+  }
+
+  if (room.thrownPlayers.size > 0) {
+    room.io.to(room.code).emit('thrownPlayerSync', [...room.thrownPlayers.entries()].map(([id, tp]) => ({ id, x: tp.x, y: tp.y })));
+  }
+
+  for (const player of room.players.values()) {
+    if (player.status === 'grabbed' && Date.now() - player.grabbedAt > GRAB.maxHoldSec * 1000) {
+      const carrier = room.players.get(player.carriedBy);
+      if (carrier) dropCarriedPlayer(room, carrier);
+    }
   }
 
   for (const powerup of [...room.powerups.values()]) {
@@ -482,7 +603,8 @@ function joinPlayerToRoom(room, socket, name, avatarId, isHost) {
     lastPunch: 0, lastKick: 0, invulnerableUntil: 0, holding: null,
     damageDealt: 0, damageTaken: 0,
     speedBuffUntil: 0, speedBuffMultiplier: 1, damageBuffUntil: 0, damageBuffMultiplier: 1,
-    crownScore: 0, taskProgress: 0, taskDone: false, lastDamagedAt: 0
+    crownScore: 0, taskProgress: 0, taskDone: false, lastDamagedAt: 0,
+      carrying: null, carriedBy: null, lastGrab: 0, grabbedAt: 0
   };
 
   room.players.set(socket.id, player);
@@ -503,7 +625,15 @@ function handleLeave(socket) {
   if (!room) return;
 
   const leavingPlayer = room.players.get(socket.id);
-  if (leavingPlayer) dropHeldItem(room, leavingPlayer);
+  if (leavingPlayer) {
+    dropHeldItem(room, leavingPlayer);
+    dropCarriedPlayer(room, leavingPlayer);
+    if (leavingPlayer.carriedBy) {
+      const carrier = room.players.get(leavingPlayer.carriedBy);
+      if (carrier) carrier.carrying = null;
+    }
+    room.thrownPlayers.delete(leavingPlayer.id);
+  }
   room.players.delete(socket.id);
 
   if (room.players.size === 0) {
@@ -667,6 +797,55 @@ io.on('connection', socket => {
       player.taskDone = true;
       completeCtoTask(room, player);
     }
+  });
+
+  socket.on('grabPlayer', () => {
+    const room = rooms.get(socket.data.roomCode);
+    if (!room || room.state !== 'playing') return;
+    const player = room.players.get(socket.id);
+    if (!player || player.status !== 'active' || player.holding || player.carrying || player.carriedBy) return;
+    if (Date.now() - player.lastGrab < GRAB.cooldownSec * 1000) return;
+
+    let target = null;
+    let nearestDist = Infinity;
+    for (const other of room.players.values()) {
+      if (other.id === player.id || other.status !== 'active') continue;
+      if (other.carriedBy || Date.now() < other.invulnerableUntil) continue;
+      const dist = Math.hypot(other.x - player.x, other.y - player.y);
+      if (dist < GRAB.range && dist < nearestDist) { nearestDist = dist; target = other; }
+    }
+    if (!target) return;
+
+    player.lastGrab = Date.now();
+    player.carrying = target.id;
+    target.carriedBy = player.id;
+    target.status = 'grabbed';
+    target.grabbedAt = Date.now();
+    room.io.to(room.code).emit('playerGrabbed', { carrierId: player.id, targetId: target.id });
+  });
+
+  socket.on('throwPlayer', ({ angle } = {}) => {
+    const room = rooms.get(socket.data.roomCode);
+    if (!room || room.state !== 'playing') return;
+    const player = room.players.get(socket.id);
+    if (!player || player.status !== 'active' || !player.carrying) return;
+    const thrown = room.players.get(player.carrying);
+    player.carrying = null;
+    if (!thrown) return;
+    if (typeof angle === 'number' && isFinite(angle)) player.angle = angle;
+
+    thrown.carriedBy = null;
+    thrown.status = 'thrown';
+    const x = player.x + Math.cos(player.angle) * PLAYER.radius;
+    const y = player.y + Math.sin(player.angle) * PLAYER.radius;
+    room.thrownPlayers.set(thrown.id, {
+      x, y,
+      vx: Math.cos(player.angle) * GRAB.throwSpeed,
+      vy: Math.sin(player.angle) * GRAB.throwSpeed,
+      thrownBy: player.id, traveled: 0
+    });
+
+    room.io.to(room.code).emit('playerThrown', { carrierId: player.id, targetId: thrown.id, x, y, angle: player.angle });
   });
 
   socket.on('leaveRoom', () => handleLeave(socket));

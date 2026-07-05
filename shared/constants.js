@@ -29,7 +29,20 @@ export const CTO_TASKS = [
 ];
 export const CTO_TASK_REWARD_CROWN = 2;
 export const CTO_TASK_GAP_SEC = 8;
-export const CTO_TASK_FIRST_DELAY_SEC = 15;
+export const CTO_TASK_FIRST_DELAY_SEC = 8;
+
+// Grabbing: instead of picking up an item, a player can grab a nearby opponent,
+// carry them around, and throw them into someone else for big damage.
+export const GRAB = {
+  range: 55,
+  cooldownSec: 1.2,
+  maxHoldSec: 3,
+  throwSpeed: 780,
+  maxRange: 1000,
+  damageToTarget: 26,
+  damageToThrown: 14,
+  knockback: 480
+};
 
 export const PLAYER = { radius: 26, speed: 260 };
 

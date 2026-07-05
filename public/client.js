@@ -50,7 +50,8 @@ const state = {
     powerups: new Map(),
     crown: null,
     kingId: null,
-    ctoTask: null
+    ctoTask: null,
+    thrownPlayers: new Map()
   },
   shakeAmount: 0,
   lastPunchAt: 0,
@@ -94,6 +95,10 @@ class SoundManager {
   }
   defeat() { this.tone(200, 0.5, 'sawtooth', 0.15, 400); }
   click() { this.tone(600, 0.05, 'sine', 0.08); }
+  taskAlert() {
+    this.tone(500, 0.12, 'triangle', 0.14);
+    setTimeout(() => this.tone(750, 0.18, 'triangle', 0.16), 110);
+  }
 }
 const sound = new SoundManager();
 window.addEventListener('pointerdown', () => { sound.init(); sound.resume(); }, { once: true });
@@ -140,8 +145,8 @@ window.addEventListener('keydown', e => {
   const k = e.key.toLowerCase();
   keys[k] = true;
   if (state.screen !== 'arena') return;
-  if (k === 'j') doPunch();
-  if (k === 'k') doKick();
+  if (k === 'f') doPunch();
+  if (k === 'g') doKick();
   if (k === 'e') doInteract();
 });
 window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
@@ -243,6 +248,14 @@ function doKick() {
 function doInteract() {
   const me = state.match.players.get(state.selfId);
   if (!me || me.status !== 'active') return;
+
+  if (me.carrying) {
+    sound.throwSfx();
+    me.carrying = null;
+    socket.emit('throwPlayer', { angle: me.angle });
+    return;
+  }
+
   if (me.holding) {
     sound.throwSfx();
     me.holding = null;
@@ -250,6 +263,18 @@ function doInteract() {
     socket.emit('throwItem', { angle: me.angle });
     return;
   }
+
+  let nearestPlayerId = null, nearestPlayerDist = Infinity;
+  for (const p of state.match.players.values()) {
+    if (p.id === me.id || p.status !== 'active') continue;
+    const d = Math.hypot(p.x - me.x, p.y - me.y);
+    if (d < nearestPlayerDist) { nearestPlayerDist = d; nearestPlayerId = p.id; }
+  }
+  if (nearestPlayerId !== null && nearestPlayerDist < 60) {
+    socket.emit('grabPlayer');
+    return;
+  }
+
   let nearestId = null, nearestDist = Infinity;
   for (const item of state.match.items.values()) {
     if (item.heldBy) continue;
@@ -592,13 +617,14 @@ function drawPlayer(p) {
   const avatar = AVATARS[p.avatarId] || AVATARS[0];
   const eliminated = p.status === 'eliminated';
   const down = p.status === 'down';
+  const grabbed = p.status === 'grabbed';
 
   ctx.save();
   ctx.fillStyle = 'rgba(0,0,0,0.2)';
   ctx.beginPath(); ctx.arc(p.renderX, p.renderY + 12, PLAYER.radius, 0, Math.PI * 2); ctx.fill();
 
   ctx.translate(p.renderX, p.renderY);
-  ctx.globalAlpha = eliminated ? 0.25 : (down ? 0.55 : 1);
+  ctx.globalAlpha = eliminated ? 0.25 : (down ? 0.55 : (grabbed ? 0.85 : 1));
 
   if (Date.now() < p.invulnUntil) {
     ctx.save();
@@ -609,7 +635,7 @@ function drawPlayer(p) {
   }
 
   ctx.save();
-  ctx.rotate(p.renderAngle);
+  ctx.rotate(p.renderAngle + (grabbed ? Math.PI / 2 : 0));
 
   const bodyColor = avatar.color;
   const limbShade = shadeColor(bodyColor, -35);
@@ -635,7 +661,7 @@ function drawPlayer(p) {
     ctx.globalAlpha = (p.hitFlashTimer / 0.2) * 0.6;
     ctx.fillStyle = '#ff0844';
     ctx.beginPath(); ctx.ellipse(-2, 0, 13, 15, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.globalAlpha = eliminated ? 0.25 : (down ? 0.55 : 1);
+    ctx.globalAlpha = eliminated ? 0.25 : (down ? 0.55 : (grabbed ? 0.85 : 1));
   }
 
   const headX = 15;
@@ -680,6 +706,10 @@ function drawPlayer(p) {
     ctx.fillStyle = 'rgba(255,255,255,0.7)';
     ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'center';
     ctx.fillText('OUT', 0, -PLAYER.radius - 16);
+  } else if (grabbed) {
+    ctx.fillStyle = '#ffc048';
+    ctx.font = 'bold 10px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText('HELD', 0, -PLAYER.radius - 16);
   } else {
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'center';
@@ -790,6 +820,31 @@ function updateArena(dt) {
     if (p.attackAnim) { p.attackAnim.timer -= dt; if (p.attackAnim.timer <= 0) p.attackAnim = null; }
     if (p.hitFlashTimer > 0) p.hitFlashTimer -= dt;
     if (p.stunTimer > 0) p.stunTimer -= dt;
+
+    if (p.status === 'grabbed') {
+      const carrier = state.match.players.get(p.carriedBy);
+      if (carrier) {
+        const offset = PLAYER.radius + 14;
+        p.x = carrier.x + Math.cos(carrier.angle) * offset;
+        p.y = carrier.y + Math.sin(carrier.angle) * offset;
+        p.renderX = carrier.renderX + Math.cos(carrier.renderAngle) * offset;
+        p.renderY = carrier.renderY + Math.sin(carrier.renderAngle) * offset;
+        p.renderAngle = carrier.renderAngle;
+      }
+      continue;
+    }
+
+    if (p.status === 'thrown') {
+      const tp = state.match.thrownPlayers.get(p.id);
+      if (tp) {
+        tp.renderX += (tp.x - tp.renderX) * 0.4;
+        tp.renderY += (tp.y - tp.renderY) * 0.4;
+        p.x = tp.x; p.y = tp.y;
+        p.renderX = tp.renderX; p.renderY = tp.renderY;
+        p.renderAngle += dt * 14;
+      }
+      continue;
+    }
 
     if (p.id === state.selfId) {
       if (p.status === 'active' && p.stunTimer <= 0) {
@@ -1011,6 +1066,7 @@ socket.on('matchStarted', data => {
   state.match.crown = data.crown || null;
   state.match.kingId = null;
   state.match.ctoTask = null;
+  state.match.thrownPlayers.clear();
 
   data.players.forEach(sp => {
     const avatar = AVATARS[sp.avatarId] || AVATARS[0];
@@ -1018,7 +1074,7 @@ socket.on('matchStarted', data => {
       id: sp.id, name: sp.name, avatarId: sp.avatarId, color: avatar.color,
       x: sp.x, y: sp.y, renderX: sp.x, renderY: sp.y, angle: sp.angle, renderAngle: sp.angle,
       vx: 0, vy: 0, hp: sp.hp, lives: sp.lives, status: sp.status, holding: sp.holding, holdingType: null,
-      crownScore: sp.crownScore || 0,
+      crownScore: sp.crownScore || 0, carrying: null, carriedBy: null,
       attackAnim: null, hitFlashTimer: 0, stunTimer: 0, invulnUntil: Date.now() + MATCH.respawnInvulnSec * 1000,
       speedBuffUntil: 0, speedBuffMultiplier: 1, damageBuffUntil: 0,
       moving: false
@@ -1091,6 +1147,71 @@ socket.on('itemDropped', item => {
   }
 });
 
+socket.on('playerGrabbed', ({ carrierId, targetId }) => {
+  const carrier = state.match.players.get(carrierId);
+  const target = state.match.players.get(targetId);
+  if (carrier) carrier.carrying = targetId;
+  if (target) {
+    target.carriedBy = carrierId;
+    target.status = 'grabbed';
+  }
+  sound.pickup();
+  pushKillFeed(`🤼 ${carrier ? carrier.name : 'Someone'} grabbed ${target ? target.name : 'someone'}!`);
+});
+
+socket.on('playerThrown', ({ carrierId, targetId, x, y, angle }) => {
+  const carrier = state.match.players.get(carrierId);
+  const target = state.match.players.get(targetId);
+  if (carrier) carrier.carrying = null;
+  if (target) {
+    target.carriedBy = null;
+    target.status = 'thrown';
+    target.x = x; target.y = y; target.renderX = x; target.renderY = y; target.angle = angle;
+  }
+  sound.throwSfx();
+  pushKillFeed(`🤾 ${carrier ? carrier.name : 'Someone'} threw ${target ? target.name : 'someone'}!`);
+  state.match.thrownPlayers.set(targetId, { x, y, renderX: x, renderY: y });
+});
+
+socket.on('thrownPlayerSync', list => {
+  list.forEach(u => {
+    const tp = state.match.thrownPlayers.get(u.id);
+    if (tp) { tp.x = u.x; tp.y = u.y; }
+  });
+});
+
+socket.on('playerLanded', ({ id, x, y, newHp, newLives, koed, eliminated, hit }) => {
+  state.match.thrownPlayers.delete(id);
+  const target = state.match.players.get(id);
+  if (target) {
+    target.x = x; target.y = y; target.renderX = x; target.renderY = y;
+    target.hp = newHp; target.lives = newLives;
+    target.status = eliminated ? 'eliminated' : 'active';
+    target.stunTimer = 0.4;
+    target.invulnUntil = Date.now() + 600;
+    particles.spawn(x, y, koed ? 16 : 8, '#ff0844');
+    if (eliminated) pushKillFeed(`💥 ${target.name} was eliminated on landing!`);
+    else if (koed) pushKillFeed(`🤕 ${target.name} was knocked out on landing!`);
+    if (target.id === state.selfId) { state.shakeAmount = 14; triggerDamageFlash(); }
+  }
+  if (hit) {
+    const hitPlayer = state.match.players.get(hit.targetId);
+    if (hitPlayer) applyHitToPlayer(hitPlayer, hit);
+  }
+});
+
+socket.on('playerDropped', ({ id, x, y }) => {
+  const target = state.match.players.get(id);
+  for (const p of state.match.players.values()) {
+    if (p.carrying === id) p.carrying = null;
+  }
+  if (target) {
+    target.carriedBy = null;
+    target.status = 'active';
+    target.x = x; target.y = y; target.renderX = x; target.renderY = y;
+  }
+});
+
 socket.on('itemSpawned', item => {
   state.match.items.set(item.id, { id: item.id, type: item.type, x: item.x, y: item.y, heldBy: null });
 });
@@ -1132,17 +1253,26 @@ socket.on('crownCollected', ({ playerId, crownScore, kingId, kingChanged }) => {
   }
 });
 
+function showTaskFlash(label) {
+  const el = document.getElementById('task-flash');
+  document.getElementById('task-flash-text').textContent = label;
+  el.classList.add('active');
+  clearTimeout(showTaskFlash.hideTimer);
+  showTaskFlash.hideTimer = setTimeout(() => el.classList.remove('active'), 2600);
+}
+
 socket.on('ctoTaskAssigned', ({ id, label, deadlineAt }) => {
   state.match.ctoTask = { id, label, deadlineAt };
-  sound.click();
-  pushKillFeed(`📋 CTO TASK: ${label}!`);
+  sound.taskAlert();
+  showTaskFlash(label);
+  pushKillFeed(`📋 TASK: ${label}!`);
 });
 
 socket.on('ctoTaskCompleted', ({ playerId, reward, crownScore, kingId, kingChanged }) => {
   state.match.ctoTask = null;
   const player = state.match.players.get(playerId);
   if (player) player.crownScore = crownScore;
-  pushKillFeed(`✅ ${player ? player.name : 'Someone'} completed the CTO task! +${reward} crown score`);
+  pushKillFeed(`✅ ${player ? player.name : 'Someone'} completed the task! +${reward} crown score`);
   if (kingChanged) {
     state.match.kingId = kingId;
     const king = state.match.players.get(kingId);
@@ -1155,7 +1285,7 @@ socket.on('ctoTaskCompleted', ({ playerId, reward, crownScore, kingId, kingChang
 
 socket.on('ctoTaskExpired', () => {
   state.match.ctoTask = null;
-  pushKillFeed('⌛ Nobody completed the CTO task in time.');
+  pushKillFeed('⌛ Nobody completed the task in time.');
 });
 
 socket.on('playerRespawned', ({ id, x, y, hp }) => {
@@ -1233,6 +1363,15 @@ document.getElementById('join-btn').addEventListener('click', () => {
   if (!code) { document.getElementById('landing-error').textContent = 'Enter a room code.'; return; }
   document.getElementById('landing-error').textContent = '';
   socket.emit('joinRoom', { code, name: getName(), avatarId: state.avatarId });
+});
+
+document.getElementById('how-to-play-btn').addEventListener('click', () => {
+  document.getElementById('landing-screen').classList.remove('active');
+  document.getElementById('guide-screen').classList.add('active');
+});
+document.getElementById('close-guide-btn').addEventListener('click', () => {
+  document.getElementById('guide-screen').classList.remove('active');
+  document.getElementById('landing-screen').classList.add('active');
 });
 
 document.getElementById('start-match-btn').addEventListener('click', () => {
