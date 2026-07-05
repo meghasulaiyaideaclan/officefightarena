@@ -10,7 +10,7 @@ import {
   CROWN, CROWN_SPAWNS,
   CTO_TASKS, CTO_TASK_REWARD_CROWN, CTO_TASK_GAP_SEC, CTO_TASK_FIRST_DELAY_SEC, GRAB,
   ZONES,
-  OBSTACLES, ITEM_SPAWNS, PLAYER_SPAWNS, AVATARS, clamp, normalizeAngleDiff
+  OBSTACLES, ITEM_SPAWNS, TABLE_SPAWNS, TABLE_RESPAWN_SEC, PLAYER_SPAWNS, AVATARS, clamp, normalizeAngleDiff
 } from './shared/constants.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -92,12 +92,13 @@ function spawnItemAt(room, spawnPoint, type) {
   return room.items.get(id);
 }
 
-function scheduleItemRespawn(room, spawnPoint) {
+function scheduleItemRespawn(room, spawnPoint, type) {
+  const isTable = type === 'table';
   setTimeout(() => {
     if (room.state !== 'playing') return;
-    const item = spawnItemAt(room, spawnPoint, randomItemType());
+    const item = spawnItemAt(room, spawnPoint, isTable ? 'table' : randomItemType());
     room.io.to(room.code).emit('itemSpawned', item);
-  }, ITEM_RESPAWN_SEC * 1000);
+  }, (isTable ? TABLE_RESPAWN_SEC : ITEM_RESPAWN_SEC) * 1000);
 }
 
 function spawnPowerupAt(room, spawnPoint, type) {
@@ -390,6 +391,7 @@ function beginPlaying(room) {
   room.currentTask = null;
   if (room.taskTimeoutHandle) { clearTimeout(room.taskTimeoutHandle); room.taskTimeoutHandle = null; }
   ITEM_SPAWNS.forEach(pt => spawnItemAt(room, pt, randomItemType()));
+  TABLE_SPAWNS.forEach(pt => spawnItemAt(room, pt, 'table'));
   POWERUP_SPAWNS.forEach(pt => spawnPowerupAt(room, pt, randomPowerupType()));
   spawnCrown(room);
 
@@ -469,7 +471,7 @@ function tick(room) {
       if (!hitEmitted) {
         room.io.to(room.code).emit('projectileRemoved', { id: proj.id });
       }
-      scheduleItemRespawn(room, proj.spawnPoint);
+      scheduleItemRespawn(room, proj.spawnPoint, proj.itemType);
     }
   }
 

@@ -28,6 +28,7 @@ function switchScreen(name) {
   document.getElementById('cto-task-banner').style.display = 'none';
   if (name === 'arena' && isTouchDevice()) mobileActions.style.display = 'flex';
   else mobileActions.style.display = 'none';
+  document.getElementById('controls-hint').style.display = (name === 'arena' && !isTouchDevice()) ? 'flex' : 'none';
 }
 
 function isTouchDevice() {
@@ -426,9 +427,9 @@ function drawStaircase(s) {
 
   ctx.fillStyle = '#00f2fe';
   ctx.font = 'bold 16px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText(s.id === 'up' ? '▲' : '▼', 0, -s.h / 2 - 14);
+  ctx.fillText(s.arrow, 0, -s.h / 2 - 14);
   ctx.font = 'bold 9px system-ui';
-  ctx.fillText(s.id === 'up' ? 'ROOFTOP' : 'OFFICE', 0, s.h / 2 + 12);
+  ctx.fillText(s.to, 0, s.h / 2 + 12);
   ctx.restore();
 }
 
@@ -532,6 +533,15 @@ function drawItemIcon(type, ctx) {
     ctx.fillStyle = spec.color; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5;
     ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     ctx.fillStyle = '#2d3436'; ctx.fillRect(-7, -7, 14, 14);
+  } else if (type === 'table') {
+    ctx.fillStyle = '#5c3d24';
+    [[-17, -9], [17, -9], [-17, 9], [17, 9]].forEach(([lx, ly]) => {
+      ctx.beginPath(); ctx.arc(lx, ly, 3, 0, Math.PI * 2); ctx.fill();
+    });
+    ctx.fillStyle = spec.color; ctx.strokeStyle = '#5c3d24'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.roundRect(-20, -12, 40, 24, 4); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = 'rgba(0,0,0,0.2)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(-20, 0); ctx.lineTo(20, 0); ctx.stroke();
   }
 }
 
@@ -863,7 +873,7 @@ function loop(ts) {
     updateArena(dt);
     render();
     leaderboardTimer -= dt;
-    if (leaderboardTimer <= 0) { leaderboardTimer = 0.4; renderLeaderboard(); }
+    if (leaderboardTimer <= 0) { leaderboardTimer = 0.15; renderLeaderboard(); }
     updateHudTimer();
     updateCtoBanner();
   }
@@ -1014,6 +1024,7 @@ function renderLeaderboard() {
     return `<div class="leaderboard-row">
       <span class="player-dot" style="background:${avatar.color}"></span>
       <span class="leaderboard-name">${crownPrefix}${escapeHtml(p.name)}${status}</span>
+      <span class="leaderboard-score">👑${p.crownScore || 0}</span>
       <span>${p.lives}❤</span>
     </div>`;
   }).join('');
@@ -1449,14 +1460,22 @@ document.getElementById('join-code-input').addEventListener('keydown', e => {
   document.getElementById('join-btn').click();
 });
 
-document.getElementById('how-to-play-btn').addEventListener('click', () => {
-  document.getElementById('landing-screen').classList.remove('active');
+let guideReturnScreenId = null;
+function openGuide(returnScreenId) {
+  guideReturnScreenId = returnScreenId;
+  if (returnScreenId) document.getElementById(returnScreenId).classList.remove('active');
   document.getElementById('guide-screen').classList.add('active');
-});
-document.getElementById('close-guide-btn').addEventListener('click', () => {
+}
+function closeGuide() {
   document.getElementById('guide-screen').classList.remove('active');
-  document.getElementById('landing-screen').classList.add('active');
-});
+  if (guideReturnScreenId) document.getElementById(guideReturnScreenId).classList.add('active');
+  guideReturnScreenId = null;
+}
+
+document.getElementById('how-to-play-btn').addEventListener('click', () => openGuide('landing-screen'));
+document.getElementById('lobby-how-to-play-btn').addEventListener('click', () => openGuide('lobby-screen'));
+document.getElementById('arena-how-to-play-btn').addEventListener('click', () => openGuide(null));
+document.getElementById('close-guide-btn').addEventListener('click', closeGuide);
 
 document.getElementById('start-match-btn').addEventListener('click', () => {
   document.getElementById('lobby-error').textContent = '';

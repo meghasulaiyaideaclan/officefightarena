@@ -65,10 +65,16 @@ export const COMBAT = {
 export const ITEM_TYPES = {
   stapler: { damage: 14, throwSpeed: 900, knockback: 300, radius: 12, maxRange: 1100, color: '#ff6b6b' },
   keyboard: { damage: 20, throwSpeed: 720, knockback: 380, radius: 15, maxRange: 1000, color: '#2d3436' },
-  chair: { damage: 28, throwSpeed: 540, knockback: 520, radius: 20, maxRange: 900, color: '#a29bfe' }
+  chair: { damage: 28, throwSpeed: 540, knockback: 520, radius: 20, maxRange: 900, color: '#a29bfe' },
+  // A rare, devastating heavy weapon - a full hit takes a player from 100 HP straight to a KO.
+  // Deliberately slow and short-ranged so it can't be spammed like the lighter items.
+  table: { damage: 100, throwSpeed: 420, knockback: 650, radius: 26, maxRange: 650, color: '#8b5e3c' }
 };
-export const ITEM_TYPE_KEYS = Object.keys(ITEM_TYPES);
+// Only these spawn in the common random rotation; 'table' spawns separately (see TABLE_SPAWNS).
+export const ITEM_TYPE_KEYS = ['stapler', 'keyboard', 'chair'];
 export const ITEM_RESPAWN_SEC = 8;
+export const TABLE_SPAWNS = [{ x: 800, y: 650 }, { x: 800, y: 1300 }, { x: 600, y: 3050 }];
+export const TABLE_RESPAWN_SEC = 25;
 export const ITEM_PICKUP_RANGE = 46;
 export const THROW_SELF_HIT_GRACE_SEC = 0.12;
 
@@ -125,10 +131,12 @@ export const FLOOR_WALLS = [
 ];
 
 // Lobby: reception desk + waiting benches.
+// Kept well clear of the staircase clusters near the top (y~1490-1660) and
+// bottom (y~2040-2210) of this zone so furniture never blocks the entry/exit path.
 const LOBBY_OBSTACLES = [
-  { x: 700, y: 1650, w: 200, h: 80, kind: 'reception' },
-  { x: 420, y: 1900, w: 110, h: 45, kind: 'bench' },
-  { x: 1070, y: 1900, w: 110, h: 45, kind: 'bench' }
+  { x: 700, y: 1810, w: 200, h: 80, kind: 'reception' },
+  { x: 420, y: 1920, w: 110, h: 45, kind: 'bench' },
+  { x: 1070, y: 1920, w: 110, h: 45, kind: 'bench' }
 ];
 
 // Terrace: outdoor bistro tables.
@@ -154,14 +162,14 @@ export const OBSTACLES = [...DESKS, ...PARTITIONS, ...FLOOR_WALLS, ...ZONE_OBSTA
 
 // Walking onto a staircase hotspot teleports the player to its target point.
 export const STAIRCASES = [
-  { id: 'main-up', x: 770, y: 950, w: 60, h: 45, targetX: 800, targetY: 1110 },
-  { id: 'rooftop-down', x: 770, y: 1055, w: 60, h: 45, targetX: 800, targetY: 940 },
-  { id: 'rooftop-up', x: 770, y: 1500, w: 60, h: 45, targetX: 800, targetY: 1660 },
-  { id: 'lobby-down', x: 770, y: 1605, w: 60, h: 45, targetX: 800, targetY: 1490 },
-  { id: 'lobby-up', x: 770, y: 2050, w: 60, h: 45, targetX: 800, targetY: 2210 },
-  { id: 'terrace-down', x: 770, y: 2155, w: 60, h: 45, targetX: 800, targetY: 2040 },
-  { id: 'terrace-up', x: 770, y: 2600, w: 60, h: 45, targetX: 800, targetY: 2760 },
-  { id: 'park-down', x: 770, y: 2705, w: 60, h: 45, targetX: 800, targetY: 2590 }
+  { id: 'main-up', x: 770, y: 950, w: 60, h: 45, targetX: 800, targetY: 1110, arrow: '▲', to: 'ROOFTOP' },
+  { id: 'rooftop-down', x: 770, y: 1055, w: 60, h: 45, targetX: 800, targetY: 940, arrow: '▼', to: 'OFFICE' },
+  { id: 'rooftop-up', x: 770, y: 1500, w: 60, h: 45, targetX: 800, targetY: 1660, arrow: '▼', to: 'LOBBY' },
+  { id: 'lobby-down', x: 770, y: 1605, w: 60, h: 45, targetX: 800, targetY: 1490, arrow: '▲', to: 'ROOFTOP' },
+  { id: 'lobby-up', x: 770, y: 2050, w: 60, h: 45, targetX: 800, targetY: 2210, arrow: '▼', to: 'TERRACE' },
+  { id: 'terrace-down', x: 770, y: 2155, w: 60, h: 45, targetX: 800, targetY: 2040, arrow: '▲', to: 'LOBBY' },
+  { id: 'terrace-up', x: 770, y: 2600, w: 60, h: 45, targetX: 800, targetY: 2760, arrow: '▼', to: 'PARK' },
+  { id: 'park-down', x: 770, y: 2705, w: 60, h: 45, targetX: 800, targetY: 2590, arrow: '▲', to: 'TERRACE' }
 ];
 export const STAIRCASE_TELEPORT_COOLDOWN_SEC = 1.0;
 
@@ -199,7 +207,7 @@ export const CROWN_SPAWNS = [
   { x: 330, y: 200 }, { x: 1270, y: 200 },
   { x: 330, y: 800 }, { x: 1270, y: 800 },
   { x: 485, y: 1140 }, { x: 1115, y: 1140 },
-  { x: 800, y: 1850 }, { x: 800, y: 2400 }, { x: 1200, y: 2900 }
+  { x: 300, y: 1850 }, { x: 800, y: 2400 }, { x: 1200, y: 2900 }
 ];
 export const CROWN = { pickupRange: 40, respawnSec: 14, color: '#ffd700' };
 

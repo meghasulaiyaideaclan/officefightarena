@@ -15,7 +15,7 @@
     <div id="landing-screen" class="screen-overlay active">
       <div class="modal-box glass-panel">
         <h1 class="logo-gradient">Office Fight Arena</h1>
-        <p class="modal-desc">Punch, kick, and hurl staplers at your coworkers. Grab coffee, tea, lemonade, pizza and burgers around the office to heal up. Take the staircase to the rooftop lounge and find the hidden crown to become King of the Clan. Up to 7 players per room.</p>
+        <p class="modal-desc">Punch, kick, and hurl staplers (or whole tables) at your coworkers. Explore the Office, Rooftop, Lobby, Terrace and Park to find power-ups and the hidden crown to become King of the Clan. Up to 7 players per room.</p>
 
         <input type="text" id="name-input" maxlength="16" placeholder="Your name" class="text-input">
 
@@ -58,10 +58,10 @@
           <p>Coffee, tea, lemonade, pizza and burgers are scattered around the office — walk over one to heal. Coffee also grants a speed boost and pizza a damage boost for a few seconds.</p>
 
           <h3>📦 Office items & grabbing players</h3>
-          <p>Staplers, keyboards and chairs can be picked up (E) and thrown (E again) at other players for extra damage. You can also grab a nearby opponent instead of an item — carry them and throw them into someone else!</p>
+          <p>Staplers, keyboards and chairs can be picked up (E) and thrown (E again) at other players for extra damage. Watch for the rare heavy table — a direct hit knocks a player out instantly. You can also grab a nearby opponent instead of an item — carry them and throw them into someone else!</p>
 
-          <h3>🏢 The rooftop</h3>
-          <p>Step onto the ▲ staircase to head up to the rooftop lounge, or the ▼ staircase to come back down to the main office floor.</p>
+          <h3>🏢 Explore the building</h3>
+          <p>Staircases connect Main Office → Rooftop Lounge → Reception Lobby → Terrace → Park. Step onto a staircase's arrow to travel between areas — each one has its own items, power-ups, and hiding spots.</p>
 
           <h3>👑 King of the Clan</h3>
           <p>A hidden golden crown spawns somewhere in the office or upstairs. Whoever has collected the most crowns wears one above their head and is crowned King of the Clan.</p>
@@ -92,6 +92,7 @@
           <button class="btn-gradient" id="start-match-btn">START MATCH</button>
           <button class="btn-secondary" id="leave-lobby-btn">LEAVE ROOM</button>
         </div>
+        <button class="btn-secondary" id="lobby-how-to-play-btn">📖 HOW TO PLAY</button>
         <p id="lobby-hint" class="modal-desc" style="margin-top:4px;">Waiting for the host to start the match...</p>
       </div>
     </div>
@@ -130,6 +131,14 @@
     <div id="task-flash" class="glass-panel">
       <div class="task-flash-label">📋 New Task</div>
       <div class="task-flash-text" id="task-flash-text"></div>
+    </div>
+
+    <div id="controls-hint" class="glass-panel" style="display:none;">
+      <div class="controls-hint-row"><kbd>WASD</kbd><span>Move</span></div>
+      <div class="controls-hint-row"><kbd>F</kbd><span>Punch</span></div>
+      <div class="controls-hint-row"><kbd>G</kbd><span>Kick</span></div>
+      <div class="controls-hint-row"><kbd>E</kbd><span>Grab / Throw</span></div>
+      <button id="arena-how-to-play-btn" class="controls-hint-help">❓ Full Guide</button>
     </div>
 
     <!-- Mobile Controls -->
