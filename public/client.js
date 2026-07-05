@@ -1,7 +1,7 @@
 import {
   ARENA, ROOM, MATCH, PLAYER, COMBAT, ITEM_TYPES, POWERUPS, CROWN,
   DESKS, PARTITIONS, OBSTACLES, PLANTS, STAIRCASES, STAIRCASE_TELEPORT_COOLDOWN_SEC,
-  FLOOR_WALL, MAIN_FLOOR_HEIGHT, AVATARS, clamp, normalizeAngleDiff
+  FLOOR_WALLS, ZONES, ZONE_OBSTACLES, AVATARS, clamp, normalizeAngleDiff
 } from '/shared/constants.js';
 
 const socket = io();
@@ -446,6 +446,55 @@ function drawFloorWall(w) {
   ctx.restore();
 }
 
+function drawZoneObstacle(o) {
+  ctx.save();
+  const cx = o.x + o.w / 2, cy = o.y + o.h / 2;
+
+  if (o.kind === 'reception') {
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath(); ctx.roundRect(o.x + 6, o.y + 10, o.w, o.h, 10); ctx.fill();
+    ctx.fillStyle = '#4a3a2a'; ctx.strokeStyle = '#2d2318'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.roundRect(o.x, o.y, o.w, o.h, 10); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#6b5540';
+    ctx.fillRect(o.x + 8, o.y + o.h - 14, o.w - 16, 8);
+    ctx.fillStyle = '#1b1f24'; ctx.strokeStyle = '#8a8f96'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.roundRect(cx - 16, o.y + 10, 32, 20, 3); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = 'rgba(0,210,255,0.5)'; ctx.fillRect(cx - 13, o.y + 13, 26, 14);
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText('WELCOME', cx, o.y - 8);
+  } else if (o.kind === 'bench') {
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    ctx.beginPath(); ctx.roundRect(o.x + 4, o.y + 8, o.w, o.h, 10); ctx.fill();
+    ctx.fillStyle = '#5c4433'; ctx.strokeStyle = '#3d2c20'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.roundRect(o.x, o.y, o.w, o.h, 10); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#7a5b42';
+    for (let i = 0; i < 3; i++) ctx.fillRect(o.x + 8 + i * (o.w - 16) / 3, o.y + 6, (o.w - 16) / 3 - 4, o.h - 12);
+  } else if (o.kind === 'bistro') {
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    ctx.beginPath(); ctx.arc(cx, cy + 6, o.w / 2, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#8b5e3c'; ctx.strokeStyle = '#5c3d24'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(cx, cy, o.w / 2, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    ctx.beginPath(); ctx.arc(cx, cy, o.w / 2 - 8, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#3d2c20';
+    [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([dx, dy]) => {
+      ctx.beginPath(); ctx.arc(cx + dx * (o.w / 2 + 10), cy + dy * (o.w / 2 + 10), 8, 0, Math.PI * 2); ctx.fill();
+    });
+  } else if (o.kind === 'tree') {
+    ctx.fillStyle = 'rgba(0,0,0,0.22)';
+    ctx.beginPath(); ctx.ellipse(cx, cy + 30, 34, 12, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#6b4a30';
+    ctx.fillRect(cx - 6, cy - 4, 12, 34);
+    ctx.fillStyle = '#2f7a34';
+    [[-16, -10], [16, -10], [0, -26], [-10, 6], [10, 6]].forEach(([dx, dy]) => {
+      ctx.beginPath(); ctx.arc(cx + dx, cy + dy, 24, 0, Math.PI * 2); ctx.fill();
+    });
+    ctx.fillStyle = '#3f9142';
+    ctx.beginPath(); ctx.arc(cx, cy - 8, 26, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+}
+
 function drawCrownIcon(ctx) {
   ctx.fillStyle = CROWN.color; ctx.strokeStyle = '#b8860b'; ctx.lineWidth = 1.5;
   ctx.beginPath();
@@ -771,12 +820,22 @@ function render() {
   ctx.strokeStyle = 'rgba(122, 79, 240, 0.4)'; ctx.lineWidth = 10;
   ctx.strokeRect(0, 0, ARENA.width, ARENA.height);
 
-  ctx.fillStyle = 'rgba(255, 190, 110, 0.04)';
-  ctx.fillRect(0, MAIN_FLOOR_HEIGHT + FLOOR_WALL.h, ARENA.width, ARENA.height - (MAIN_FLOOR_HEIGHT + FLOOR_WALL.h));
-  drawFloorWall(FLOOR_WALL);
+  Object.values(ZONES).forEach(z => {
+    if (!z.tint) return;
+    ctx.fillStyle = z.tint;
+    ctx.fillRect(0, z.yMin, ARENA.width, z.yMax - z.yMin);
+  });
+  Object.values(ZONES).forEach(z => {
+    if (!z.label) return;
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    ctx.font = '900 34px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText(z.label, ARENA.width / 2, z.yMin + 60);
+  });
+  FLOOR_WALLS.forEach(drawFloorWall);
   STAIRCASES.forEach(drawStaircase);
 
   PLANTS.forEach(drawPlant);
+  ZONE_OBSTACLES.forEach(drawZoneObstacle);
   DESKS.forEach(drawDesk);
   PARTITIONS.forEach(drawPartition);
   COWORKERS.forEach(drawCoworker);
@@ -916,7 +975,9 @@ function updateHudTimer() {
   const remaining = Math.max(0, state.match.endAt - Date.now()) / 1000;
   const m = Math.floor(remaining / 60);
   const s = Math.floor(remaining % 60);
-  document.getElementById('hud-timer').textContent = `${m}:${s.toString().padStart(2, '0')}`;
+  const timerEl = document.getElementById('hud-timer');
+  timerEl.textContent = `${m}:${s.toString().padStart(2, '0')}`;
+  timerEl.classList.toggle('critical', remaining <= 30);
 
   const me = state.match.players.get(state.selfId);
   if (me) {
@@ -1047,12 +1108,18 @@ socket.on('matchCountdown', ({ seconds }) => {
   switchScreen('countdown');
   let remaining = seconds;
   const el = document.getElementById('countdown-number');
-  el.textContent = remaining;
+  const pop = () => {
+    el.textContent = remaining;
+    el.style.animation = 'none';
+    void el.offsetWidth;
+    el.style.animation = '';
+  };
+  pop();
   sound.click();
   const interval = setInterval(() => {
     remaining--;
     if (remaining <= 0) { clearInterval(interval); return; }
-    el.textContent = remaining;
+    pop();
     sound.click();
   }, 1000);
 });
@@ -1121,6 +1188,10 @@ socket.on('projectileSync', list => {
     const proj = state.match.projectiles.get(u.id);
     if (proj) { proj.x = u.x; proj.y = u.y; }
   });
+});
+
+socket.on('projectileRemoved', ({ id }) => {
+  state.match.projectiles.delete(id);
 });
 
 socket.on('itemPickedUp', ({ itemId, playerId }) => {
@@ -1363,6 +1434,19 @@ document.getElementById('join-btn').addEventListener('click', () => {
   if (!code) { document.getElementById('landing-error').textContent = 'Enter a room code.'; return; }
   document.getElementById('landing-error').textContent = '';
   socket.emit('joinRoom', { code, name: getName(), avatarId: state.avatarId });
+});
+
+document.getElementById('name-input').addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  const code = document.getElementById('join-code-input').value.trim();
+  if (code) document.getElementById('join-btn').click();
+  else document.getElementById('quickplay-btn').click();
+});
+document.getElementById('join-code-input').addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  document.getElementById('join-btn').click();
 });
 
 document.getElementById('how-to-play-btn').addEventListener('click', () => {

@@ -9,7 +9,7 @@ import {
   POWERUPS, POWERUP_TYPE_KEYS, POWERUP_RESPAWN_SEC, POWERUP_PICKUP_RANGE, POWERUP_SPAWNS,
   CROWN, CROWN_SPAWNS,
   CTO_TASKS, CTO_TASK_REWARD_CROWN, CTO_TASK_GAP_SEC, CTO_TASK_FIRST_DELAY_SEC, GRAB,
-  MAIN_FLOOR_HEIGHT, FLOOR_WALL,
+  ZONES,
   OBSTACLES, ITEM_SPAWNS, PLAYER_SPAWNS, AVATARS, clamp, normalizeAngleDiff
 } from './shared/constants.js';
 
@@ -171,6 +171,10 @@ function collectCrown(room, player) {
     playerId: player.id, crownScore: player.crownScore,
     kingId: room.kingId, kingChanged
   });
+
+  if (room.currentTask && room.currentTask.id === 'collectCrown') {
+    completeCtoTask(room, player);
+  }
 }
 
 function scheduleCtoTask(room, delaySec) {
@@ -180,8 +184,23 @@ function scheduleCtoTask(room, delaySec) {
   }, delaySec * 1000);
 }
 
+function isInZone(y, zone) {
+  return y > zone.yMin && y < zone.yMax;
+}
+
+function pickCtoTaskDef(room) {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const def = CTO_TASKS[Math.floor(Math.random() * CTO_TASKS.length)];
+    if (def.id !== 'reachRooftop') return def;
+    const activePlayers = room.playerList.filter(p => p.status !== 'eliminated');
+    const allAlreadyThere = activePlayers.length > 0 && activePlayers.every(p => isInZone(p.y, ZONES.rooftop));
+    if (!allAlreadyThere) return def;
+  }
+  return CTO_TASKS.find(t => t.id !== 'reachRooftop') || CTO_TASKS[0];
+}
+
 function assignCtoTask(room) {
-  const def = CTO_TASKS[Math.floor(Math.random() * CTO_TASKS.length)];
+  const def = pickCtoTaskDef(room);
   const now = Date.now();
   const deadlineAt = now + def.durationSec * 1000;
   room.currentTask = { id: def.id, target: def.target, startedAt: now, deadlineAt };
@@ -189,6 +208,7 @@ function assignCtoTask(room) {
   for (const p of room.players.values()) {
     p.taskProgress = 0;
     p.taskDone = false;
+    if (def.id === 'reachRooftop') p.wasOnRooftopAtTaskStart = isInZone(p.y, ZONES.rooftop);
   }
 
   room.io.to(room.code).emit('ctoTaskAssigned', {
@@ -357,7 +377,7 @@ function beginPlaying(room) {
       lastPunch: 0, lastKick: 0, holding: null, damageDealt: 0, damageTaken: 0, status: 'active',
       invulnerableUntil: Date.now() + MATCH.respawnInvulnSec * 1000,
       speedBuffUntil: 0, speedBuffMultiplier: 1, damageBuffUntil: 0, damageBuffMultiplier: 1,
-      crownScore: 0, taskProgress: 0, taskDone: false, lastDamagedAt: 0,
+      crownScore: 0, taskProgress: 0, taskDone: false, lastDamagedAt: 0, wasOnRooftopAtTaskStart: false,
       carrying: null, carriedBy: null, lastGrab: 0, grabbedAt: 0
     });
   });
@@ -414,6 +434,8 @@ function tick(room) {
       }
     }
 
+    let hitEmitted = false;
+
     if (!removed) {
       const spec = ITEM_TYPES[proj.itemType];
       for (const target of room.players.values()) {
@@ -426,6 +448,11 @@ function tick(room) {
           const result = applyDamage(room, target, spec.damage, dirx, diry, spec.knockback, proj.ownerId);
           if (result) {
             room.io.to(room.code).emit('projectileHit', { itemId: proj.id, targetId: target.id, ...result });
+            hitEmitted = true;
+            if (result.koed && room.currentTask && room.currentTask.id === 'itemKo') {
+              const attacker = room.players.get(proj.ownerId);
+              if (attacker) completeCtoTask(room, attacker);
+            }
           }
           removed = true;
           break;
@@ -439,6 +466,9 @@ function tick(room) {
 
     if (removed) {
       room.projectiles.delete(proj.id);
+      if (!hitEmitted) {
+        room.io.to(room.code).emit('projectileRemoved', { id: proj.id });
+      }
       scheduleItemRespawn(room, proj.spawnPoint);
     }
   }
@@ -545,7 +575,15 @@ function tick(room) {
   if (room.currentTask) {
     if (room.currentTask.id === 'reachRooftop') {
       for (const player of room.players.values()) {
-        if (player.status === 'active' && player.y > MAIN_FLOOR_HEIGHT + FLOOR_WALL.h) {
+        if (player.status !== 'active') continue;
+        const onRoof = isInZone(player.y, ZONES.rooftop);
+        if (player.wasOnRooftopAtTaskStart) {
+          // Excluded for starting on the rooftop already - but once they actually leave,
+          // a later genuine arrival should count.
+          if (!onRoof) player.wasOnRooftopAtTaskStart = false;
+          continue;
+        }
+        if (onRoof) {
           completeCtoTask(room, player);
           break;
         }
@@ -603,7 +641,7 @@ function joinPlayerToRoom(room, socket, name, avatarId, isHost) {
     lastPunch: 0, lastKick: 0, invulnerableUntil: 0, holding: null,
     damageDealt: 0, damageTaken: 0,
     speedBuffUntil: 0, speedBuffMultiplier: 1, damageBuffUntil: 0, damageBuffMultiplier: 1,
-    crownScore: 0, taskProgress: 0, taskDone: false, lastDamagedAt: 0,
+    crownScore: 0, taskProgress: 0, taskDone: false, lastDamagedAt: 0, wasOnRooftopAtTaskStart: false,
       carrying: null, carriedBy: null, lastGrab: 0, grabbedAt: 0
   };
 
@@ -821,6 +859,8 @@ io.on('connection', socket => {
     target.carriedBy = player.id;
     target.status = 'grabbed';
     target.grabbedAt = Date.now();
+    target.speedBuffUntil = 0;
+    target.damageBuffUntil = 0;
     room.io.to(room.code).emit('playerGrabbed', { carrierId: player.id, targetId: target.id });
   });
 
@@ -846,6 +886,11 @@ io.on('connection', socket => {
     });
 
     room.io.to(room.code).emit('playerThrown', { carrierId: player.id, targetId: thrown.id, x, y, angle: player.angle });
+
+    if (room.currentTask && room.currentTask.id === 'throwPlayers') {
+      player.taskProgress = (player.taskProgress || 0) + 1;
+      if (player.taskProgress >= room.currentTask.target) completeCtoTask(room, player);
+    }
   });
 
   socket.on('leaveRoom', () => handleLeave(socket));
