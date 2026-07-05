@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: office-fight-arena
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 20

@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Office Fight Arena</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <div id="game-container">
+    <div id="damage-vignette"></div>
+
+    <!-- ============ LANDING SCREEN ============ -->
+    <div id="landing-screen" class="screen-overlay active">
+      <div class="modal-box glass-panel">
+        <h1 class="logo-gradient">Office Fight Arena</h1>
+        <p class="modal-desc">Punch, kick, and hurl staplers at your coworkers. Up to 7 players per room.</p>
+
+        <input type="text" id="name-input" maxlength="16" placeholder="Your name" class="text-input">
+
+        <div class="avatar-grid" id="avatar-grid"></div>
+
+        <div id="landing-error" class="error-text"></div>
+
+        <div class="landing-actions">
+          <button class="btn-gradient" id="quickplay-btn">QUICK PLAY</button>
+          <button class="btn-secondary" id="create-btn">CREATE ROOM</button>
+          <div class="join-row">
+            <input type="text" id="join-code-input" maxlength="5" placeholder="ROOM CODE" class="text-input code-input">
+            <button class="btn-secondary" id="join-btn">JOIN</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ LOBBY SCREEN ============ -->
+    <div id="lobby-screen" class="screen-overlay">
+      <div class="modal-box glass-panel">
+        <h1 class="logo-gradient" style="font-size:28px;">Room Lobby</h1>
+        <div class="room-code-box">
+          <span class="hud-label">ROOM CODE</span>
+          <span id="lobby-code" class="room-code-value">-----</span>
+          <button class="copy-btn" id="copy-code-btn" title="Copy code">COPY</button>
+        </div>
+
+        <div id="lobby-players" class="lobby-players"></div>
+        <div id="lobby-count" class="hud-label">0 / 7 PLAYERS</div>
+
+        <div id="lobby-error" class="error-text"></div>
+
+        <div style="display:flex; gap:16px;">
+          <button class="btn-gradient" id="start-match-btn">START MATCH</button>
+          <button class="btn-secondary" id="leave-lobby-btn">LEAVE ROOM</button>
+        </div>
+        <p id="lobby-hint" class="modal-desc" style="margin-top:4px;">Waiting for the host to start the match...</p>
+      </div>
+    </div>
+
+    <!-- ============ COUNTDOWN OVERLAY ============ -->
+    <div id="countdown-screen" class="screen-overlay">
+      <div class="countdown-number" id="countdown-number">3</div>
+    </div>
+
+    <!-- ============ ARENA HUD ============ -->
+    <div id="hud" class="glass-panel" style="display:none;">
+      <div class="hud-section">
+        <span class="hud-label">Time Left</span>
+        <span id="hud-timer" class="hud-value">3:00</span>
+      </div>
+      <div class="hud-section" style="width:180px;">
+        <span class="hud-label">Your HP</span>
+        <div class="chaos-bar-bg"><div id="hud-hp-fill" class="chaos-bar-fill"></div></div>
+      </div>
+      <div class="hud-section">
+        <span class="hud-label">Lives</span>
+        <span id="hud-lives" class="hud-value">❤❤❤</span>
+      </div>
+    </div>
+
+    <div id="leaderboard" class="glass-panel" style="display:none;"></div>
+    <div id="kill-feed"></div>
+
+    <!-- Mobile Controls -->
+    <div id="mobile-joystick"><div id="mobile-joystick-knob"></div></div>
+    <div id="mobile-actions" style="display:none;">
+      <div class="action-btn" id="btn-punch">👊</div>
+      <div class="action-btn" id="btn-kick">🦵</div>
+      <div class="action-btn" id="btn-interact">🤲</div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- ============ RESULTS SCREEN ============ -->
+    <div id="results-screen" class="screen-overlay">
+      <div class="modal-box glass-panel">
+        <h1 class="logo-gradient" id="results-title">VICTORY!</h1>
+        <p class="modal-desc" id="results-subtitle"></p>
+        <div id="standings-table" class="standings-table"></div>
+        <div style="display:flex; gap:16px;">
+          <button class="btn-gradient" id="back-to-lobby-btn">BACK TO LOBBY</button>
+          <button class="btn-secondary" id="leave-results-btn">LEAVE ROOM</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script type="module" src="client.js"></script>
+</body>
+</html>
