@@ -17,6 +17,20 @@ export const MATCH = {
   countdownSec: 3
 };
 
+// CTO Directives: periodic race-to-complete objectives. First player to finish
+// the current task wins the crown-score reward; the task then resets after a gap.
+export const CTO_TASKS = [
+  { id: 'kos', label: 'Land {target} KOs', target: 2, durationSec: 30 },
+  { id: 'reachRooftop', label: 'Reach the Rooftop Lounge', target: 1, durationSec: 20 },
+  { id: 'surviveNoDamage', label: 'Survive {target}s without taking damage', target: 12, durationSec: 25 },
+  { id: 'collectPowerups', label: 'Collect {target} power-ups', target: 2, durationSec: 25 },
+  { id: 'dealDamage', label: 'Deal {target} total damage', target: 40, durationSec: 25 },
+  { id: 'throwItem', label: 'Throw an office item at someone', target: 1, durationSec: 20 }
+];
+export const CTO_TASK_REWARD_CROWN = 2;
+export const CTO_TASK_GAP_SEC = 8;
+export const CTO_TASK_FIRST_DELAY_SEC = 15;
+
 export const PLAYER = { radius: 26, speed: 260 };
 
 export const COMBAT = {

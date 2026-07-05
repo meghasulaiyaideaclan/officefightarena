@@ -8,6 +8,8 @@ import {
   ITEM_RESPAWN_SEC, ITEM_PICKUP_RANGE, THROW_SELF_HIT_GRACE_SEC,
   POWERUPS, POWERUP_TYPE_KEYS, POWERUP_RESPAWN_SEC, POWERUP_PICKUP_RANGE, POWERUP_SPAWNS,
   CROWN, CROWN_SPAWNS,
+  CTO_TASKS, CTO_TASK_REWARD_CROWN, CTO_TASK_GAP_SEC, CTO_TASK_FIRST_DELAY_SEC,
+  MAIN_FLOOR_HEIGHT, FLOOR_WALL,
   OBSTACLES, ITEM_SPAWNS, PLAYER_SPAWNS, AVATARS, clamp, normalizeAngleDiff
 } from './shared/constants.js';
 
@@ -54,6 +56,8 @@ class Room {
     this.powerups = new Map();
     this.crown = null;
     this.kingId = null;
+    this.currentTask = null;
+    this.taskTimeoutHandle = null;
     this.itemSeq = 0;
     this.projSeq = 0;
     this.powerupSeq = 0;
@@ -125,6 +129,11 @@ function collectPowerup(room, player, powerup) {
     id: powerup.id, type: powerup.type, playerId: player.id, newHp: player.hp,
     buff: spec.buff, buffDurationSec: spec.buffDurationSec, buffMultiplier: spec.buffMultiplier
   });
+
+  if (room.currentTask && room.currentTask.id === 'collectPowerups') {
+    player.taskProgress = (player.taskProgress || 0) + 1;
+    if (player.taskProgress >= room.currentTask.target) completeCtoTask(room, player);
+  }
 }
 
 function spawnCrown(room) {
@@ -141,22 +150,76 @@ function scheduleCrownRespawn(room) {
   }, CROWN.respawnSec * 1000);
 }
 
-function collectCrown(room, player) {
-  room.crown = null;
-  player.crownScore = (player.crownScore || 0) + 1;
-
+function recomputeKing(room) {
   let king = null;
   for (const p of room.players.values()) {
     if (!king || p.crownScore > king.crownScore) king = p;
   }
   const kingChanged = king && room.kingId !== king.id;
   if (kingChanged) room.kingId = king.id;
+  return kingChanged;
+}
+
+function collectCrown(room, player) {
+  room.crown = null;
+  player.crownScore = (player.crownScore || 0) + 1;
+  const kingChanged = recomputeKing(room);
 
   scheduleCrownRespawn(room);
   room.io.to(room.code).emit('crownCollected', {
     playerId: player.id, crownScore: player.crownScore,
     kingId: room.kingId, kingChanged
   });
+}
+
+function scheduleCtoTask(room, delaySec) {
+  setTimeout(() => {
+    if (room.state !== 'playing') return;
+    assignCtoTask(room);
+  }, delaySec * 1000);
+}
+
+function assignCtoTask(room) {
+  const def = CTO_TASKS[Math.floor(Math.random() * CTO_TASKS.length)];
+  const now = Date.now();
+  const deadlineAt = now + def.durationSec * 1000;
+  room.currentTask = { id: def.id, target: def.target, startedAt: now, deadlineAt };
+
+  for (const p of room.players.values()) {
+    p.taskProgress = 0;
+    p.taskDone = false;
+  }
+
+  room.io.to(room.code).emit('ctoTaskAssigned', {
+    id: def.id, label: def.label.replace('{target}', def.target), target: def.target, deadlineAt
+  });
+
+  room.taskTimeoutHandle = setTimeout(() => {
+    if (room.state !== 'playing' || !room.currentTask || room.currentTask.startedAt !== now) return;
+    room.currentTask = null;
+    room.io.to(room.code).emit('ctoTaskExpired', { id: def.id });
+    scheduleCtoTask(room, CTO_TASK_GAP_SEC);
+  }, def.durationSec * 1000);
+}
+
+function completeCtoTask(room, player) {
+  if (!room.currentTask) return;
+  const taskId = room.currentTask.id;
+  room.currentTask = null;
+  if (room.taskTimeoutHandle) {
+    clearTimeout(room.taskTimeoutHandle);
+    room.taskTimeoutHandle = null;
+  }
+
+  player.crownScore = (player.crownScore || 0) + CTO_TASK_REWARD_CROWN;
+  const kingChanged = recomputeKing(room);
+
+  room.io.to(room.code).emit('ctoTaskCompleted', {
+    taskId, playerId: player.id, reward: CTO_TASK_REWARD_CROWN,
+    crownScore: player.crownScore, kingId: room.kingId, kingChanged
+  });
+
+  scheduleCtoTask(room, CTO_TASK_GAP_SEC);
 }
 
 function dropHeldItem(room, player) {
@@ -176,8 +239,15 @@ function applyDamage(room, target, damage, dirx, diry, knockback, attackerId) {
 
   target.hp -= damage;
   target.damageTaken += damage;
+  target.lastDamagedAt = Date.now();
   const attacker = room.players.get(attackerId);
-  if (attacker && attacker.id !== target.id) attacker.damageDealt += damage;
+  if (attacker && attacker.id !== target.id) {
+    attacker.damageDealt += damage;
+    if (room.currentTask && room.currentTask.id === 'dealDamage') {
+      attacker.taskProgress = (attacker.taskProgress || 0) + damage;
+      if (attacker.taskProgress >= room.currentTask.target) completeCtoTask(room, attacker);
+    }
+  }
 
   target.x = clamp(target.x + dirx * knockback * 0.35, PLAYER.radius, ARENA.width - PLAYER.radius);
   target.y = clamp(target.y + diry * knockback * 0.35, PLAYER.radius, ARENA.height - PLAYER.radius);
@@ -195,6 +265,10 @@ function applyDamage(room, target, damage, dirx, diry, knockback, attackerId) {
     } else {
       target.status = 'down';
       scheduleRespawn(room, target);
+    }
+    if (attacker && attacker.id !== target.id && room.currentTask && room.currentTask.id === 'kos') {
+      attacker.taskProgress = (attacker.taskProgress || 0) + 1;
+      if (attacker.taskProgress >= room.currentTask.target) completeCtoTask(room, attacker);
     }
   }
 
@@ -239,7 +313,7 @@ function beginPlaying(room) {
       lastPunch: 0, lastKick: 0, holding: null, damageDealt: 0, damageTaken: 0, status: 'active',
       invulnerableUntil: Date.now() + MATCH.respawnInvulnSec * 1000,
       speedBuffUntil: 0, speedBuffMultiplier: 1, damageBuffUntil: 0, damageBuffMultiplier: 1,
-      crownScore: 0
+      crownScore: 0, taskProgress: 0, taskDone: false, lastDamagedAt: 0
     });
   });
 
@@ -247,6 +321,8 @@ function beginPlaying(room) {
   room.projectiles.clear();
   room.powerups.clear();
   room.kingId = null;
+  room.currentTask = null;
+  if (room.taskTimeoutHandle) { clearTimeout(room.taskTimeoutHandle); room.taskTimeoutHandle = null; }
   ITEM_SPAWNS.forEach(pt => spawnItemAt(room, pt, randomItemType()));
   POWERUP_SPAWNS.forEach(pt => spawnPowerupAt(room, pt, randomPowerupType()));
   spawnCrown(room);
@@ -262,6 +338,7 @@ function beginPlaying(room) {
   });
 
   room.tickHandle = setInterval(() => tick(room), 50);
+  scheduleCtoTask(room, CTO_TASK_FIRST_DELAY_SEC);
 }
 
 function tick(room) {
@@ -344,6 +421,26 @@ function tick(room) {
     }
   }
 
+  if (room.currentTask) {
+    if (room.currentTask.id === 'reachRooftop') {
+      for (const player of room.players.values()) {
+        if (player.status === 'active' && player.y > MAIN_FLOOR_HEIGHT + FLOOR_WALL.h) {
+          completeCtoTask(room, player);
+          break;
+        }
+      }
+    } else if (room.currentTask.id === 'surviveNoDamage') {
+      for (const player of room.players.values()) {
+        if (player.status !== 'active') continue;
+        const safeSince = Math.max(room.currentTask.startedAt, player.lastDamagedAt || 0);
+        if (Date.now() - safeSince >= room.currentTask.target * 1000) {
+          completeCtoTask(room, player);
+          break;
+        }
+      }
+    }
+  }
+
   const remaining = room.playerList.filter(p => p.status !== 'eliminated');
   if (room.startingPlayerCount > 1 && remaining.length <= 1) {
     endMatch(room, 'elimination');
@@ -356,6 +453,11 @@ function endMatch(room, reason) {
     clearInterval(room.tickHandle);
     room.tickHandle = null;
   }
+  if (room.taskTimeoutHandle) {
+    clearTimeout(room.taskTimeoutHandle);
+    room.taskTimeoutHandle = null;
+  }
+  room.currentTask = null;
   const standings = room.playerList
     .map(p => ({
       id: p.id, name: p.name, avatarId: p.avatarId, lives: p.lives,
@@ -380,7 +482,7 @@ function joinPlayerToRoom(room, socket, name, avatarId, isHost) {
     lastPunch: 0, lastKick: 0, invulnerableUntil: 0, holding: null,
     damageDealt: 0, damageTaken: 0,
     speedBuffUntil: 0, speedBuffMultiplier: 1, damageBuffUntil: 0, damageBuffMultiplier: 1,
-    crownScore: 0
+    crownScore: 0, taskProgress: 0, taskDone: false, lastDamagedAt: 0
   };
 
   room.players.set(socket.id, player);
@@ -560,6 +662,11 @@ io.on('connection', socket => {
       projectile: { id: proj.id, itemType: proj.itemType, x: proj.x, y: proj.y },
       playerId: player.id, angle: player.angle
     });
+
+    if (room.currentTask && room.currentTask.id === 'throwItem' && !player.taskDone) {
+      player.taskDone = true;
+      completeCtoTask(room, player);
+    }
   });
 
   socket.on('leaveRoom', () => handleLeave(socket));

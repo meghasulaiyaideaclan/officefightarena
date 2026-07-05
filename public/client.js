@@ -25,6 +25,7 @@ function switchScreen(name) {
   Object.entries(screens).forEach(([key, el]) => el.classList.toggle('active', key === name));
   hud.style.display = name === 'arena' ? 'flex' : 'none';
   leaderboardEl.style.display = name === 'arena' ? 'flex' : 'none';
+  document.getElementById('cto-task-banner').style.display = 'none';
   if (name === 'arena' && isTouchDevice()) mobileActions.style.display = 'flex';
   else mobileActions.style.display = 'none';
 }
@@ -48,7 +49,8 @@ const state = {
     projectiles: new Map(),
     powerups: new Map(),
     crown: null,
-    kingId: null
+    kingId: null,
+    ctoTask: null
   },
   shakeAmount: 0,
   lastPunchAt: 0,
@@ -774,6 +776,7 @@ function loop(ts) {
     leaderboardTimer -= dt;
     if (leaderboardTimer <= 0) { leaderboardTimer = 0.4; renderLeaderboard(); }
     updateHudTimer();
+    updateCtoBanner();
   }
 }
 requestAnimationFrame(loop);
@@ -872,6 +875,15 @@ function updateHudTimer() {
     const el = document.getElementById(id);
     if (el) el.classList.toggle('on-cooldown', performance.now() - last < cd * 1000);
   });
+}
+
+function updateCtoBanner() {
+  const el = document.getElementById('cto-task-banner');
+  if (!state.match.ctoTask) { el.style.display = 'none'; return; }
+  el.style.display = 'flex';
+  const remaining = Math.max(0, state.match.ctoTask.deadlineAt - Date.now()) / 1000;
+  document.getElementById('cto-task-label').textContent = state.match.ctoTask.label;
+  document.getElementById('cto-task-timer').textContent = `${remaining.toFixed(0)}s`;
 }
 
 function renderLeaderboard() {
@@ -998,6 +1010,7 @@ socket.on('matchStarted', data => {
   state.match.powerups.clear();
   state.match.crown = data.crown || null;
   state.match.kingId = null;
+  state.match.ctoTask = null;
 
   data.players.forEach(sp => {
     const avatar = AVATARS[sp.avatarId] || AVATARS[0];
@@ -1117,6 +1130,32 @@ socket.on('crownCollected', ({ playerId, crownScore, kingId, kingChanged }) => {
     pushKillFeed(`👑 ${king ? king.name : 'Someone'} is the new King of the Clan!`);
     sound.victory();
   }
+});
+
+socket.on('ctoTaskAssigned', ({ id, label, deadlineAt }) => {
+  state.match.ctoTask = { id, label, deadlineAt };
+  sound.click();
+  pushKillFeed(`📋 CTO TASK: ${label}!`);
+});
+
+socket.on('ctoTaskCompleted', ({ playerId, reward, crownScore, kingId, kingChanged }) => {
+  state.match.ctoTask = null;
+  const player = state.match.players.get(playerId);
+  if (player) player.crownScore = crownScore;
+  pushKillFeed(`✅ ${player ? player.name : 'Someone'} completed the CTO task! +${reward} crown score`);
+  if (kingChanged) {
+    state.match.kingId = kingId;
+    const king = state.match.players.get(kingId);
+    pushKillFeed(`👑 ${king ? king.name : 'Someone'} is the new King of the Clan!`);
+    sound.victory();
+  } else {
+    sound.pickup();
+  }
+});
+
+socket.on('ctoTaskExpired', () => {
+  state.match.ctoTask = null;
+  pushKillFeed('⌛ Nobody completed the CTO task in time.');
 });
 
 socket.on('playerRespawned', ({ id, x, y, hp }) => {

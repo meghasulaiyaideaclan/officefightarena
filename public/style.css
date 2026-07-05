@@ -163,6 +163,14 @@ canvas { display: block; width: 100%; height: 100%; background-color: #120e1c; }
   position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
   display: flex; flex-direction: column-reverse; gap: 6px; z-index: 15; pointer-events: none; align-items: center;
 }
+
+#cto-task-banner {
+  position: absolute; top: 92px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 12px; padding: 8px 20px; z-index: 12;
+  pointer-events: none; border: 1px solid rgba(255, 192, 72, 0.4);
+}
+.cto-task-text { font-size: 12px; font-weight: 800; color: #fff; }
+.cto-task-timer { font-size: 12px; font-weight: 900; color: #ffc048; font-family: monospace; }
 .kill-feed-item {
   padding: 6px 16px; border-radius: 14px; font-size: 12px; font-weight: 800; color: #fff;
   background: rgba(0,0,0,0.55); border: 1px solid rgba(255,255,255,0.1);
