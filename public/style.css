@@ -153,6 +153,11 @@ canvas { display: block; width: 100%; height: 100%; background-color: #120e1c; }
 .leaderboard-row { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 700; }
 .leaderboard-row .player-dot { width: 14px; height: 14px; font-size: 0; }
 .leaderboard-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.leaderboard-king {
+  font-size: 10px; font-weight: 800; color: #ffd700;
+  padding-bottom: 4px; margin-bottom: 2px; border-bottom: 1px solid rgba(255,215,0,0.3);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 
 #kill-feed {
   position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);

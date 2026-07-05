@@ -7,6 +7,7 @@ import {
   ARENA, ROOM, MATCH, PLAYER, COMBAT, ITEM_TYPES, ITEM_TYPE_KEYS,
   ITEM_RESPAWN_SEC, ITEM_PICKUP_RANGE, THROW_SELF_HIT_GRACE_SEC,
   POWERUPS, POWERUP_TYPE_KEYS, POWERUP_RESPAWN_SEC, POWERUP_PICKUP_RANGE, POWERUP_SPAWNS,
+  CROWN, CROWN_SPAWNS,
   OBSTACLES, ITEM_SPAWNS, PLAYER_SPAWNS, AVATARS, clamp, normalizeAngleDiff
 } from './shared/constants.js';
 
@@ -37,6 +38,10 @@ function randomPowerupType() {
   return POWERUP_TYPE_KEYS[Math.floor(Math.random() * POWERUP_TYPE_KEYS.length)];
 }
 
+function randomCrownSpawn() {
+  return CROWN_SPAWNS[Math.floor(Math.random() * CROWN_SPAWNS.length)];
+}
+
 class Room {
   constructor(code) {
     this.code = code;
@@ -47,6 +52,8 @@ class Room {
     this.items = new Map();
     this.projectiles = new Map();
     this.powerups = new Map();
+    this.crown = null;
+    this.kingId = null;
     this.itemSeq = 0;
     this.projSeq = 0;
     this.powerupSeq = 0;
@@ -71,7 +78,7 @@ class Room {
 }
 
 function serializePlayer(p) {
-  return { id: p.id, name: p.name, avatarId: p.avatarId, x: p.x, y: p.y, angle: p.angle, hp: p.hp, lives: p.lives, status: p.status, holding: p.holding };
+  return { id: p.id, name: p.name, avatarId: p.avatarId, x: p.x, y: p.y, angle: p.angle, hp: p.hp, lives: p.lives, status: p.status, holding: p.holding, crownScore: p.crownScore };
 }
 
 function spawnItemAt(room, spawnPoint, type) {
@@ -117,6 +124,38 @@ function collectPowerup(room, player, powerup) {
   room.io.to(room.code).emit('powerupCollected', {
     id: powerup.id, type: powerup.type, playerId: player.id, newHp: player.hp,
     buff: spec.buff, buffDurationSec: spec.buffDurationSec, buffMultiplier: spec.buffMultiplier
+  });
+}
+
+function spawnCrown(room) {
+  const spawnPoint = randomCrownSpawn();
+  room.crown = { id: 'crown', x: spawnPoint.x, y: spawnPoint.y };
+  return room.crown;
+}
+
+function scheduleCrownRespawn(room) {
+  setTimeout(() => {
+    if (room.state !== 'playing') return;
+    const crown = spawnCrown(room);
+    room.io.to(room.code).emit('crownSpawned', crown);
+  }, CROWN.respawnSec * 1000);
+}
+
+function collectCrown(room, player) {
+  room.crown = null;
+  player.crownScore = (player.crownScore || 0) + 1;
+
+  let king = null;
+  for (const p of room.players.values()) {
+    if (!king || p.crownScore > king.crownScore) king = p;
+  }
+  const kingChanged = king && room.kingId !== king.id;
+  if (kingChanged) room.kingId = king.id;
+
+  scheduleCrownRespawn(room);
+  room.io.to(room.code).emit('crownCollected', {
+    playerId: player.id, crownScore: player.crownScore,
+    kingId: room.kingId, kingChanged
   });
 }
 
@@ -199,15 +238,18 @@ function beginPlaying(room) {
       hp: MATCH.startingHp, lives: MATCH.startingLives, x: spawn.x, y: spawn.y, angle: 0, moving: false,
       lastPunch: 0, lastKick: 0, holding: null, damageDealt: 0, damageTaken: 0, status: 'active',
       invulnerableUntil: Date.now() + MATCH.respawnInvulnSec * 1000,
-      speedBuffUntil: 0, speedBuffMultiplier: 1, damageBuffUntil: 0, damageBuffMultiplier: 1
+      speedBuffUntil: 0, speedBuffMultiplier: 1, damageBuffUntil: 0, damageBuffMultiplier: 1,
+      crownScore: 0
     });
   });
 
   room.items.clear();
   room.projectiles.clear();
   room.powerups.clear();
+  room.kingId = null;
   ITEM_SPAWNS.forEach(pt => spawnItemAt(room, pt, randomItemType()));
   POWERUP_SPAWNS.forEach(pt => spawnPowerupAt(room, pt, randomPowerupType()));
+  spawnCrown(room);
 
   room.matchEndAt = Date.now() + MATCH.durationSec * 1000;
   room.io.to(room.code).emit('matchStarted', {
@@ -215,7 +257,8 @@ function beginPlaying(room) {
     endAt: room.matchEndAt,
     players: room.playerList.map(serializePlayer),
     items: [...room.items.values()],
-    powerups: [...room.powerups.values()]
+    powerups: [...room.powerups.values()],
+    crown: room.crown
   });
 
   room.tickHandle = setInterval(() => tick(room), 50);
@@ -291,6 +334,16 @@ function tick(room) {
     }
   }
 
+  if (room.crown) {
+    for (const player of room.players.values()) {
+      if (player.status !== 'active') continue;
+      if (Math.hypot(player.x - room.crown.x, player.y - room.crown.y) < CROWN.pickupRange) {
+        collectCrown(room, player);
+        break;
+      }
+    }
+  }
+
   const remaining = room.playerList.filter(p => p.status !== 'eliminated');
   if (room.startingPlayerCount > 1 && remaining.length <= 1) {
     endMatch(room, 'elimination');
@@ -307,11 +360,11 @@ function endMatch(room, reason) {
     .map(p => ({
       id: p.id, name: p.name, avatarId: p.avatarId, lives: p.lives,
       damageDealt: Math.round(p.damageDealt), damageTaken: Math.round(p.damageTaken),
-      eliminated: p.status === 'eliminated'
+      crownScore: p.crownScore, eliminated: p.status === 'eliminated'
     }))
     .sort((a, b) => (b.lives - a.lives) || (a.damageTaken - b.damageTaken) || (b.damageDealt - a.damageDealt));
   const winner = standings[0] || null;
-  room.io.to(room.code).emit('matchEnded', { reason, standings, winnerId: winner ? winner.id : null });
+  room.io.to(room.code).emit('matchEnded', { reason, standings, winnerId: winner ? winner.id : null, kingId: room.kingId });
 }
 
 function joinPlayerToRoom(room, socket, name, avatarId, isHost) {
@@ -326,7 +379,8 @@ function joinPlayerToRoom(room, socket, name, avatarId, isHost) {
     hp: MATCH.startingHp, lives: MATCH.startingLives, status: 'active',
     lastPunch: 0, lastKick: 0, invulnerableUntil: 0, holding: null,
     damageDealt: 0, damageTaken: 0,
-    speedBuffUntil: 0, speedBuffMultiplier: 1, damageBuffUntil: 0, damageBuffMultiplier: 1
+    speedBuffUntil: 0, speedBuffMultiplier: 1, damageBuffUntil: 0, damageBuffMultiplier: 1,
+    crownScore: 0
   };
 
   room.players.set(socket.id, player);

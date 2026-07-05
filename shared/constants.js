@@ -1,7 +1,10 @@
 // Single source of truth for values that both server.js and public/client.js depend on.
 // Keeping this shared avoids server/client drifting apart on arena size, combat math, etc.
 
-export const ARENA = { width: 1600, height: 1000 };
+// Main floor spans y 0-1000, a solid wall spans y 1000-1050, and an upstairs
+// lounge floor spans y 1050-1550. The wall is only crossable via the staircases.
+export const ARENA = { width: 1600, height: 1550 };
+export const MAIN_FLOOR_HEIGHT = 1000;
 
 export const ROOM = { maxPlayers: 7, minToStart: 2, codeLength: 5 };
 
@@ -45,38 +48,62 @@ export const POWERUP_RESPAWN_SEC = 10;
 export const POWERUP_PICKUP_RANGE = 42;
 
 export const POWERUP_SPAWNS = [
-  { x: 1000, y: 500 }, { x: 600, y: 500 },
-  { x: 800, y: 350 }, { x: 800, y: 650 },
-  { x: 1050, y: 250 }, { x: 550, y: 750 }
+  { x: 800, y: 500 }, { x: 800, y: 250 }, { x: 800, y: 750 },
+  { x: 330, y: 500 }, { x: 1270, y: 500 }, { x: 1000, y: 300 },
+  { x: 1200, y: 1350 }
 ];
 
-export const DESKS = [
-  { x: 150, y: 140, w: 150, h: 75 },
-  { x: 1300, y: 140, w: 150, h: 75 },
-  { x: 150, y: 785, w: 150, h: 75 },
-  { x: 1300, y: 785, w: 150, h: 75 },
-  { x: 725, y: 110, w: 150, h: 70 },
-  { x: 725, y: 820, w: 150, h: 70 }
+// Main office floor: a 4x3 cubicle grid (12 desks) with open corridors between pods.
+const MAIN_DESKS = [];
+for (const cx of [200, 600, 1000, 1400]) {
+  for (const cy of [200, 500, 800]) {
+    MAIN_DESKS.push({ x: cx - 70, y: cy - 35, w: 140, h: 70 });
+  }
+}
+
+// Upstairs lounge floor: a couple of desks for coworkers who "work from the roof deck".
+const UPSTAIRS_DESKS = [
+  { x: 325, y: 1150, w: 150, h: 75 },
+  { x: 1125, y: 1150, w: 150, h: 75 }
 ];
 
-// Cubicle divider walls placed alongside desks. Same rectangle collision as desks
+export const DESKS = [...MAIN_DESKS, ...UPSTAIRS_DESKS];
+
+// Cubicle divider walls between desk pods. Same rectangle collision as desks
 // (block players + thrown items) but rendered as thin partition panels, not furniture.
 export const PARTITIONS = [
-  { x: 310, y: 140, w: 14, h: 130 },
-  { x: 1276, y: 140, w: 14, h: 130 },
-  { x: 310, y: 730, w: 14, h: 130 },
-  { x: 1276, y: 730, w: 14, h: 130 },
-  { x: 660, y: 180, w: 14, h: 160 },
-  { x: 926, y: 660, w: 14, h: 160 }
+  { x: 393, y: 145, w: 14, h: 110 }, { x: 1193, y: 145, w: 14, h: 110 },
+  { x: 393, y: 445, w: 14, h: 110 }, { x: 1193, y: 445, w: 14, h: 110 },
+  { x: 393, y: 745, w: 14, h: 110 }, { x: 1193, y: 745, w: 14, h: 110 }
 ];
 
-export const OBSTACLES = [...DESKS, ...PARTITIONS];
+// Solid divider between the main floor and the upstairs lounge. Only crossable via STAIRCASES.
+export const FLOOR_WALL = { x: 0, y: MAIN_FLOOR_HEIGHT, w: 1600, h: 50 };
+
+export const OBSTACLES = [...DESKS, ...PARTITIONS, FLOOR_WALL];
+
+// Walking onto a staircase hotspot teleports the player to its target point.
+export const STAIRCASES = [
+  { id: 'up', x: 770, y: 950, w: 60, h: 45, targetX: 800, targetY: 1110 },
+  { id: 'down', x: 770, y: 1055, w: 60, h: 45, targetX: 800, targetY: 940 }
+];
+export const STAIRCASE_TELEPORT_COOLDOWN_SEC = 1.0;
+
+// Purely decorative potted plants - no collision, just office atmosphere.
+export const PLANTS = [
+  { x: 800, y: 50 }, { x: 800, y: 950 },
+  { x: 50, y: 250 }, { x: 50, y: 750 },
+  { x: 1550, y: 250 }, { x: 1550, y: 750 },
+  { x: 200, y: 1450 }, { x: 1400, y: 1450 },
+  { x: 800, y: 1080 }
+];
 
 export const ITEM_SPAWNS = [
-  { x: 420, y: 300 }, { x: 1180, y: 300 },
-  { x: 420, y: 700 }, { x: 1180, y: 700 },
+  { x: 440, y: 300 }, { x: 1160, y: 300 },
+  { x: 440, y: 700 }, { x: 1160, y: 700 },
   { x: 800, y: 200 }, { x: 800, y: 800 },
-  { x: 220, y: 500 }, { x: 1380, y: 500 }
+  { x: 330, y: 500 }, { x: 1270, y: 500 },
+  { x: 800, y: 1350 }
 ];
 
 export const PLAYER_SPAWNS = [
@@ -85,6 +112,16 @@ export const PLAYER_SPAWNS = [
   { x: 800, y: 70 }, { x: 800, y: 930 },
   { x: 70, y: 500 }, { x: 1530, y: 500 }
 ];
+
+// The King of the Clan collectible: one crown active at a time, tucked away near desks
+// or up in the lounge. Collecting it adds to a player's score; whoever has the most
+// crowns collected this match is crowned "King of the Clan".
+export const CROWN_SPAWNS = [
+  { x: 330, y: 200 }, { x: 1270, y: 200 },
+  { x: 330, y: 800 }, { x: 1270, y: 800 },
+  { x: 485, y: 1140 }, { x: 1115, y: 1140 }
+];
+export const CROWN = { pickupRange: 40, respawnSec: 14, color: '#ffd700' };
 
 export const AVATARS = [
   { id: 0, name: 'Red', color: '#ff6b6b', accessory: 'tie' },

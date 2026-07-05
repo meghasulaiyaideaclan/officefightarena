@@ -1,6 +1,7 @@
 import {
-  ARENA, ROOM, MATCH, PLAYER, COMBAT, ITEM_TYPES, POWERUPS, DESKS, PARTITIONS, OBSTACLES, AVATARS,
-  clamp, normalizeAngleDiff
+  ARENA, ROOM, MATCH, PLAYER, COMBAT, ITEM_TYPES, POWERUPS, CROWN,
+  DESKS, PARTITIONS, OBSTACLES, PLANTS, STAIRCASES, STAIRCASE_TELEPORT_COOLDOWN_SEC,
+  FLOOR_WALL, MAIN_FLOOR_HEIGHT, AVATARS, clamp, normalizeAngleDiff
 } from '/shared/constants.js';
 
 const socket = io();
@@ -45,11 +46,14 @@ const state = {
     players: new Map(),
     items: new Map(),
     projectiles: new Map(),
-    powerups: new Map()
+    powerups: new Map(),
+    crown: null,
+    kingId: null
   },
   shakeAmount: 0,
   lastPunchAt: 0,
-  lastKickAt: 0
+  lastKickAt: 0,
+  lastTeleportAt: 0
 };
 
 // ---------------- Sound ----------------
@@ -360,6 +364,83 @@ function drawCoworker(npc) {
   ctx.restore();
 }
 
+function drawPlant(pt) {
+  ctx.save();
+  ctx.translate(pt.x, pt.y);
+  ctx.fillStyle = 'rgba(0,0,0,0.2)';
+  ctx.beginPath(); ctx.ellipse(0, 22, 12, 5, 0, 0, Math.PI * 2); ctx.fill();
+
+  ctx.fillStyle = '#a9673f'; ctx.strokeStyle = '#7a4a2c'; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(-10, 8); ctx.lineTo(10, 8); ctx.lineTo(7, 20); ctx.lineTo(-7, 20); ctx.closePath();
+  ctx.fill(); ctx.stroke();
+
+  ctx.fillStyle = '#3f9142';
+  [[-6, -4], [6, -4], [0, -12], [-9, 4], [9, 4]].forEach(([dx, dy]) => {
+    ctx.beginPath(); ctx.arc(dx, dy, 8, 0, Math.PI * 2); ctx.fill();
+  });
+  ctx.fillStyle = '#2f7a34';
+  ctx.beginPath(); ctx.arc(0, -4, 7, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
+function drawStaircase(s) {
+  ctx.save();
+  const cx = s.x + s.w / 2, cy = s.y + s.h / 2;
+  ctx.translate(cx, cy);
+  ctx.fillStyle = 'rgba(0,242,254,0.15)';
+  ctx.strokeStyle = 'rgba(0,242,254,0.6)'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.roundRect(-s.w / 2, -s.h / 2, s.w, s.h, 8); ctx.fill(); ctx.stroke();
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 2;
+  for (let i = -2; i <= 2; i++) {
+    ctx.beginPath(); ctx.moveTo(-s.w / 2 + 4, i * 7); ctx.lineTo(s.w / 2 - 4, i * 7); ctx.stroke();
+  }
+
+  ctx.fillStyle = '#00f2fe';
+  ctx.font = 'bold 16px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(s.id === 'up' ? '▲' : '▼', 0, -s.h / 2 - 14);
+  ctx.font = 'bold 9px system-ui';
+  ctx.fillText(s.id === 'up' ? 'ROOFTOP' : 'OFFICE', 0, s.h / 2 + 12);
+  ctx.restore();
+}
+
+function drawFloorWall(w) {
+  ctx.save();
+  ctx.fillStyle = '#2b2438';
+  ctx.fillRect(w.x, w.y, w.w, w.h);
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 2;
+  for (let x = w.x - w.h; x < w.x + w.w; x += 30) {
+    ctx.beginPath(); ctx.moveTo(x, w.y); ctx.lineTo(x + w.h, w.y + w.h); ctx.stroke();
+  }
+  ctx.strokeStyle = 'rgba(122,79,240,0.5)'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(w.x, w.y); ctx.lineTo(w.x + w.w, w.y); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(w.x, w.y + w.h); ctx.lineTo(w.x + w.w, w.y + w.h); ctx.stroke();
+  ctx.restore();
+}
+
+function drawCrownIcon(ctx) {
+  ctx.fillStyle = CROWN.color; ctx.strokeStyle = '#b8860b'; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(-12, 6); ctx.lineTo(-12, -4); ctx.lineTo(-6, 2); ctx.lineTo(0, -8);
+  ctx.lineTo(6, 2); ctx.lineTo(12, -4); ctx.lineTo(12, 6); ctx.closePath();
+  ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#fff5cc';
+  [-9, 0, 9].forEach(dx => { ctx.beginPath(); ctx.arc(dx, -3, 1.6, 0, Math.PI * 2); ctx.fill(); });
+}
+
+function drawGroundCrown(crown) {
+  ctx.save();
+  const floatY = Math.sin(performance.now() / 220) * 5;
+  ctx.translate(crown.x, crown.y + floatY);
+  ctx.shadowColor = CROWN.color; ctx.shadowBlur = 20;
+  ctx.globalAlpha = 0.55; ctx.strokeStyle = CROWN.color; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(0, 0, 24, 0, Math.PI * 2); ctx.stroke();
+  ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+  drawCrownIcon(ctx);
+  ctx.restore();
+}
+
 function drawItemIcon(type, ctx) {
   const spec = ITEM_TYPES[type];
   if (type === 'stapler') {
@@ -463,6 +544,14 @@ function drawProjectile(proj) {
   ctx.restore();
 }
 
+function shadeColor(hex, amount) {
+  const num = parseInt(hex.replace('#', ''), 16);
+  const r = Math.min(255, Math.max(0, (num >> 16) + amount));
+  const g = Math.min(255, Math.max(0, ((num >> 8) & 0xff) + amount));
+  const b = Math.min(255, Math.max(0, (num & 0xff) + amount));
+  return `rgb(${r},${g},${b})`;
+}
+
 function drawAccessory(accessory) {
   ctx.fillStyle = 'rgba(20,20,25,0.9)';
   ctx.strokeStyle = 'rgba(20,20,25,0.9)';
@@ -520,34 +609,63 @@ function drawPlayer(p) {
   ctx.save();
   ctx.rotate(p.renderAngle);
 
-  ctx.fillStyle = avatar.color;
-  ctx.strokeStyle = p.hitFlashTimer > 0 ? '#fff' : '#fff';
-  ctx.lineWidth = 3;
-  ctx.beginPath(); ctx.arc(0, 0, PLAYER.radius * 0.92, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  const bodyColor = avatar.color;
+  const limbShade = shadeColor(bodyColor, -35);
+  const punching = p.attackAnim && p.attackAnim.type === 'punch' && p.attackAnim.timer > 0;
+  const kicking = p.attackAnim && p.attackAnim.type === 'kick' && p.attackAnim.timer > 0;
+  const animProgress = p.attackAnim ? 1 - p.attackAnim.timer / (punching ? 0.22 : 0.28) : 0;
+  const armPunch = punching ? Math.sin(animProgress * Math.PI) * 16 : 0;
+  const legKick = kicking ? Math.sin(animProgress * Math.PI) * 14 : 0;
+  const walkSwing = (!punching && !kicking && p.moving) ? Math.sin(performance.now() / 110 + (p.id ? p.id.length : 0)) * 3 : 0;
+
+  ctx.fillStyle = limbShade;
+  ctx.beginPath(); ctx.ellipse(-11, -8 - walkSwing, 8, 6, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(-11 + legKick, 8 + walkSwing, 8, 6, 0, 0, Math.PI * 2); ctx.fill();
+
+  ctx.fillStyle = bodyColor; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.ellipse(2 + armPunch, -17, 7, 5.5, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.ellipse(2 + armPunch, 17, 7, 5.5, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+
+  ctx.fillStyle = bodyColor; ctx.strokeStyle = '#fff'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.ellipse(-2, 0, 13, 15, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
 
   if (p.hitFlashTimer > 0) {
     ctx.globalAlpha = (p.hitFlashTimer / 0.2) * 0.6;
     ctx.fillStyle = '#ff0844';
-    ctx.beginPath(); ctx.arc(0, 0, PLAYER.radius * 0.92, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(-2, 0, 13, 15, 0, 0, Math.PI * 2); ctx.fill();
     ctx.globalAlpha = eliminated ? 0.25 : (down ? 0.55 : 1);
   }
 
-  ctx.fillStyle = '#000';
-  ctx.beginPath(); ctx.arc(9, -6, 2.4, 0, Math.PI * 2); ctx.arc(9, 6, 2.4, 0, Math.PI * 2); ctx.fill();
+  const headX = 15;
+  ctx.fillStyle = bodyColor; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.arc(headX, 0, 10.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
 
+  ctx.fillStyle = '#000';
+  ctx.beginPath(); ctx.arc(headX + 4, -4, 2, 0, Math.PI * 2); ctx.arc(headX + 4, 4, 2, 0, Math.PI * 2); ctx.fill();
+
+  ctx.save();
+  ctx.translate(headX, 0);
+  ctx.scale(0.75, 0.75);
   drawAccessory(avatar.accessory);
+  ctx.restore();
+
+  const isKing = state.match.kingId === p.id;
+  if (isKing) {
+    ctx.font = '16px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('👑', headX, -17);
+  }
 
   if (p.attackAnim && p.attackAnim.timer > 0) {
     const t = p.attackAnim.timer;
     ctx.globalAlpha = Math.min(1, t * 4);
     ctx.fillStyle = p.attackAnim.type === 'punch' ? 'rgba(0,242,254,0.7)' : 'rgba(255,8,68,0.7)';
-    const dist = p.attackAnim.type === 'punch' ? COMBAT.punch.range * 0.6 : COMBAT.kick.range * 0.6;
+    const dist = headX + (p.attackAnim.type === 'punch' ? COMBAT.punch.range * 0.5 : COMBAT.kick.range * 0.5);
     ctx.beginPath(); ctx.arc(dist, 0, p.attackAnim.type === 'punch' ? 10 : 14, 0, Math.PI * 2); ctx.fill();
   }
 
   if (p.holding && p.holdingType) {
     ctx.save();
-    ctx.translate(PLAYER.radius + 10, 0);
+    ctx.translate(headX + 16, 0);
     ctx.scale(0.8, 0.8);
     drawItemIcon(p.holdingType, ctx);
     ctx.restore();
@@ -621,9 +739,16 @@ function render() {
   ctx.strokeStyle = 'rgba(122, 79, 240, 0.4)'; ctx.lineWidth = 10;
   ctx.strokeRect(0, 0, ARENA.width, ARENA.height);
 
+  ctx.fillStyle = 'rgba(255, 190, 110, 0.04)';
+  ctx.fillRect(0, MAIN_FLOOR_HEIGHT + FLOOR_WALL.h, ARENA.width, ARENA.height - (MAIN_FLOOR_HEIGHT + FLOOR_WALL.h));
+  drawFloorWall(FLOOR_WALL);
+  STAIRCASES.forEach(drawStaircase);
+
+  PLANTS.forEach(drawPlant);
   DESKS.forEach(drawDesk);
   PARTITIONS.forEach(drawPartition);
   COWORKERS.forEach(drawCoworker);
+  if (state.match.crown) drawGroundCrown(state.match.crown);
   state.match.powerups.forEach(drawGroundPowerup);
   state.match.items.forEach(item => { if (!item.heldBy) drawGroundItem(item); });
   state.match.projectiles.forEach(drawProjectile);
@@ -675,6 +800,20 @@ function updateArena(dt) {
         p.x = clamp(p.x, PLAYER.radius, ARENA.width - PLAYER.radius);
         p.y = clamp(p.y, PLAYER.radius, ARENA.height - PLAYER.radius);
         for (const d of OBSTACLES) resolveDeskCollision(p, d);
+
+        if (performance.now() - state.lastTeleportAt > STAIRCASE_TELEPORT_COOLDOWN_SEC * 1000) {
+          for (const s of STAIRCASES) {
+            if (p.x > s.x && p.x < s.x + s.w && p.y > s.y && p.y < s.y + s.h) {
+              p.x = s.targetX; p.y = s.targetY;
+              p.vx = 0; p.vy = 0;
+              camera.x = p.x; camera.y = p.y;
+              state.lastTeleportAt = performance.now();
+              sound.throwSfx();
+              particles.spawn(p.x, p.y, 14, 'rgba(0,242,254,0.6)');
+              break;
+            }
+          }
+        }
 
         if (mv.x !== 0 || mv.y !== 0) p.angle = Math.atan2(mv.y, mv.x);
         p.moving = mv.x !== 0 || mv.y !== 0;
@@ -738,12 +877,15 @@ function updateHudTimer() {
 function renderLeaderboard() {
   const rows = [...state.match.players.values()]
     .sort((a, b) => (b.lives - a.lives) || (b.hp - a.hp));
-  leaderboardEl.innerHTML = `<span class="hud-label">STANDINGS</span>` + rows.map(p => {
+  const king = state.match.kingId ? state.match.players.get(state.match.kingId) : null;
+  const kingBanner = king ? `<div class="leaderboard-king">👑 King of the Clan: ${escapeHtml(king.name)}</div>` : '';
+  leaderboardEl.innerHTML = `<span class="hud-label">STANDINGS</span>` + kingBanner + rows.map(p => {
     const avatar = AVATARS[p.avatarId] || AVATARS[0];
     const status = p.status === 'eliminated' ? ' (out)' : '';
+    const crownPrefix = p.id === state.match.kingId ? '👑 ' : '';
     return `<div class="leaderboard-row">
       <span class="player-dot" style="background:${avatar.color}"></span>
-      <span class="leaderboard-name">${escapeHtml(p.name)}${status}</span>
+      <span class="leaderboard-name">${crownPrefix}${escapeHtml(p.name)}${status}</span>
       <span>${p.lives}❤</span>
     </div>`;
   }).join('');
@@ -854,6 +996,8 @@ socket.on('matchStarted', data => {
   state.match.items.clear();
   state.match.projectiles.clear();
   state.match.powerups.clear();
+  state.match.crown = data.crown || null;
+  state.match.kingId = null;
 
   data.players.forEach(sp => {
     const avatar = AVATARS[sp.avatarId] || AVATARS[0];
@@ -861,6 +1005,7 @@ socket.on('matchStarted', data => {
       id: sp.id, name: sp.name, avatarId: sp.avatarId, color: avatar.color,
       x: sp.x, y: sp.y, renderX: sp.x, renderY: sp.y, angle: sp.angle, renderAngle: sp.angle,
       vx: 0, vy: 0, hp: sp.hp, lives: sp.lives, status: sp.status, holding: sp.holding, holdingType: null,
+      crownScore: sp.crownScore || 0,
       attackAnim: null, hitFlashTimer: 0, stunTimer: 0, invulnUntil: Date.now() + MATCH.respawnInvulnSec * 1000,
       speedBuffUntil: 0, speedBuffMultiplier: 1, damageBuffUntil: 0,
       moving: false
@@ -953,6 +1098,27 @@ socket.on('powerupCollected', ({ id, type, playerId, newHp, buff, buffDurationSe
   pushKillFeed(`${POWERUP_ICONS[type] || ''} ${player.name} grabbed ${aOrAn(type)} ${type}! +${POWERUPS[type].heal} HP`);
 });
 
+socket.on('crownSpawned', crown => {
+  state.match.crown = crown;
+});
+
+socket.on('crownCollected', ({ playerId, crownScore, kingId, kingChanged }) => {
+  state.match.crown = null;
+  const player = state.match.players.get(playerId);
+  if (player) {
+    player.crownScore = crownScore;
+    particles.spawn(player.renderX, player.renderY, 16, CROWN.color);
+  }
+  sound.pickup();
+  pushKillFeed(`👑 ${player ? player.name : 'Someone'} grabbed the crown! (${crownScore})`);
+  if (kingChanged) {
+    state.match.kingId = kingId;
+    const king = state.match.players.get(kingId);
+    pushKillFeed(`👑 ${king ? king.name : 'Someone'} is the new King of the Clan!`);
+    sound.victory();
+  }
+});
+
 socket.on('playerRespawned', ({ id, x, y, hp }) => {
   const p = state.match.players.get(id);
   if (!p) return;
@@ -968,24 +1134,27 @@ socket.on('playerLeft', ({ id }) => {
   if (state.screen === 'lobby') renderLobby();
 });
 
-socket.on('matchEnded', ({ reason, standings, winnerId }) => {
+socket.on('matchEnded', ({ reason, standings, winnerId, kingId }) => {
   switchScreen('results');
   const iWon = winnerId === state.selfId;
   document.getElementById('results-title').textContent = iWon ? 'VICTORY!' : 'MATCH OVER';
   const winner = standings.find(s => s.id === winnerId);
-  document.getElementById('results-subtitle').textContent = winner
-    ? `${winner.name} wins${reason === 'time' ? ' on the clock' : ' by knockout'}!`
-    : 'The match has ended.';
+  const king = standings.find(s => s.id === kingId);
+  let subtitle = winner ? `${winner.name} wins${reason === 'time' ? ' on the clock' : ' by knockout'}!` : 'The match has ended.';
+  if (king && king.crownScore > 0) subtitle += ` 👑 King of the Clan: ${king.name} (${king.crownScore} crowns)`;
+  document.getElementById('results-subtitle').textContent = subtitle;
   if (iWon) sound.victory(); else sound.defeat();
 
   document.getElementById('standings-table').innerHTML = standings.map((s, i) => {
     const avatar = AVATARS[s.avatarId] || AVATARS[0];
+    const crownPrefix = s.id === kingId && s.crownScore > 0 ? '👑 ' : '';
     return `<div class="standings-row ${s.id === winnerId ? 'winner' : ''}">
       <span class="standings-rank">${i + 1}</span>
       <span class="player-dot" style="background:${avatar.color}"></span>
-      <span class="standings-name">${escapeHtml(s.name)}</span>
+      <span class="standings-name">${crownPrefix}${escapeHtml(s.name)}</span>
       <span class="standings-stat">${s.lives}❤</span>
       <span class="standings-stat">DMG ${s.damageDealt}</span>
+      <span class="standings-stat">👑 ${s.crownScore}</span>
     </div>`;
   }).join('');
 });
