@@ -6,7 +6,8 @@ import { fileURLToPath } from 'url';
 import {
   ARENA, ROOM, MATCH, PLAYER, COMBAT, ITEM_TYPES, ITEM_TYPE_KEYS,
   ITEM_RESPAWN_SEC, ITEM_PICKUP_RANGE, THROW_SELF_HIT_GRACE_SEC,
-  DESKS, ITEM_SPAWNS, PLAYER_SPAWNS, AVATARS, clamp, normalizeAngleDiff
+  POWERUPS, POWERUP_TYPE_KEYS, POWERUP_RESPAWN_SEC, POWERUP_PICKUP_RANGE, POWERUP_SPAWNS,
+  OBSTACLES, ITEM_SPAWNS, PLAYER_SPAWNS, AVATARS, clamp, normalizeAngleDiff
 } from './shared/constants.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -32,6 +33,10 @@ function randomItemType() {
   return ITEM_TYPE_KEYS[Math.floor(Math.random() * ITEM_TYPE_KEYS.length)];
 }
 
+function randomPowerupType() {
+  return POWERUP_TYPE_KEYS[Math.floor(Math.random() * POWERUP_TYPE_KEYS.length)];
+}
+
 class Room {
   constructor(code) {
     this.code = code;
@@ -41,8 +46,10 @@ class Room {
     this.players = new Map();
     this.items = new Map();
     this.projectiles = new Map();
+    this.powerups = new Map();
     this.itemSeq = 0;
     this.projSeq = 0;
+    this.powerupSeq = 0;
     this.tickHandle = null;
     this.matchEndAt = 0;
     this.startingPlayerCount = 0;
@@ -79,6 +86,38 @@ function scheduleItemRespawn(room, spawnPoint) {
     const item = spawnItemAt(room, spawnPoint, randomItemType());
     room.io.to(room.code).emit('itemSpawned', item);
   }, ITEM_RESPAWN_SEC * 1000);
+}
+
+function spawnPowerupAt(room, spawnPoint, type) {
+  const id = `pw${room.powerupSeq++}`;
+  room.powerups.set(id, { id, type, x: spawnPoint.x, y: spawnPoint.y, spawnPoint });
+  return room.powerups.get(id);
+}
+
+function schedulePowerupRespawn(room, spawnPoint) {
+  setTimeout(() => {
+    if (room.state !== 'playing') return;
+    const powerup = spawnPowerupAt(room, spawnPoint, randomPowerupType());
+    room.io.to(room.code).emit('powerupSpawned', powerup);
+  }, POWERUP_RESPAWN_SEC * 1000);
+}
+
+function collectPowerup(room, player, powerup) {
+  const spec = POWERUPS[powerup.type];
+  player.hp = Math.min(MATCH.startingHp, player.hp + spec.heal);
+  if (spec.buff === 'speed') {
+    player.speedBuffUntil = Date.now() + spec.buffDurationSec * 1000;
+    player.speedBuffMultiplier = spec.buffMultiplier;
+  } else if (spec.buff === 'damage') {
+    player.damageBuffUntil = Date.now() + spec.buffDurationSec * 1000;
+    player.damageBuffMultiplier = spec.buffMultiplier;
+  }
+  room.powerups.delete(powerup.id);
+  schedulePowerupRespawn(room, powerup.spawnPoint);
+  room.io.to(room.code).emit('powerupCollected', {
+    id: powerup.id, type: powerup.type, playerId: player.id, newHp: player.hp,
+    buff: spec.buff, buffDurationSec: spec.buffDurationSec, buffMultiplier: spec.buffMultiplier
+  });
 }
 
 function dropHeldItem(room, player) {
@@ -133,6 +172,8 @@ function scheduleRespawn(room, target) {
     target.hp = MATCH.startingHp;
     target.status = 'active';
     target.invulnerableUntil = Date.now() + MATCH.respawnInvulnSec * 1000;
+    target.speedBuffUntil = 0;
+    target.damageBuffUntil = 0;
     room.io.to(room.code).emit('playerRespawned', { id: target.id, x: target.x, y: target.y, hp: target.hp });
   }, MATCH.respawnDelaySec * 1000);
 }
@@ -157,20 +198,24 @@ function beginPlaying(room) {
     Object.assign(p, {
       hp: MATCH.startingHp, lives: MATCH.startingLives, x: spawn.x, y: spawn.y, angle: 0, moving: false,
       lastPunch: 0, lastKick: 0, holding: null, damageDealt: 0, damageTaken: 0, status: 'active',
-      invulnerableUntil: Date.now() + MATCH.respawnInvulnSec * 1000
+      invulnerableUntil: Date.now() + MATCH.respawnInvulnSec * 1000,
+      speedBuffUntil: 0, speedBuffMultiplier: 1, damageBuffUntil: 0, damageBuffMultiplier: 1
     });
   });
 
   room.items.clear();
   room.projectiles.clear();
+  room.powerups.clear();
   ITEM_SPAWNS.forEach(pt => spawnItemAt(room, pt, randomItemType()));
+  POWERUP_SPAWNS.forEach(pt => spawnPowerupAt(room, pt, randomPowerupType()));
 
   room.matchEndAt = Date.now() + MATCH.durationSec * 1000;
   room.io.to(room.code).emit('matchStarted', {
     durationSec: MATCH.durationSec,
     endAt: room.matchEndAt,
     players: room.playerList.map(serializePlayer),
-    items: [...room.items.values()]
+    items: [...room.items.values()],
+    powerups: [...room.powerups.values()]
   });
 
   room.tickHandle = setInterval(() => tick(room), 50);
@@ -195,7 +240,7 @@ function tick(room) {
     }
 
     if (!removed) {
-      for (const d of DESKS) {
+      for (const d of OBSTACLES) {
         if (proj.x > d.x && proj.x < d.x + d.w && proj.y > d.y && proj.y < d.y + d.h) {
           removed = true;
           break;
@@ -236,6 +281,16 @@ function tick(room) {
     room.io.to(room.code).emit('projectileSync', [...room.projectiles.values()].map(p => ({ id: p.id, x: p.x, y: p.y })));
   }
 
+  for (const powerup of [...room.powerups.values()]) {
+    for (const player of room.players.values()) {
+      if (player.status !== 'active') continue;
+      if (Math.hypot(player.x - powerup.x, player.y - powerup.y) < POWERUP_PICKUP_RANGE) {
+        collectPowerup(room, player, powerup);
+        break;
+      }
+    }
+  }
+
   const remaining = room.playerList.filter(p => p.status !== 'eliminated');
   if (room.startingPlayerCount > 1 && remaining.length <= 1) {
     endMatch(room, 'elimination');
@@ -270,7 +325,8 @@ function joinPlayerToRoom(room, socket, name, avatarId, isHost) {
     x: spawn.x, y: spawn.y, angle: 0, moving: false,
     hp: MATCH.startingHp, lives: MATCH.startingLives, status: 'active',
     lastPunch: 0, lastKick: 0, invulnerableUntil: 0, holding: null,
-    damageDealt: 0, damageTaken: 0
+    damageDealt: 0, damageTaken: 0,
+    speedBuffUntil: 0, speedBuffMultiplier: 1, damageBuffUntil: 0, damageBuffMultiplier: 1
   };
 
   room.players.set(socket.id, player);
@@ -390,6 +446,7 @@ io.on('connection', socket => {
     if (typeof angle === 'number' && isFinite(angle)) attacker.angle = angle;
 
     const arcRad = (spec.arcDeg * Math.PI) / 180;
+    const damageMultiplier = Date.now() < attacker.damageBuffUntil ? attacker.damageBuffMultiplier : 1;
     const hits = [];
     for (const target of room.players.values()) {
       if (target.id === attacker.id || target.status !== 'active') continue;
@@ -401,7 +458,7 @@ io.on('connection', socket => {
       if (Math.abs(normalizeAngleDiff(angleTo - attacker.angle)) > arcRad / 2) continue;
       const dirx = dist > 0 ? dx / dist : 1;
       const diry = dist > 0 ? dy / dist : 0;
-      const result = applyDamage(room, target, spec.damage, dirx, diry, spec.knockback, attacker.id);
+      const result = applyDamage(room, target, spec.damage * damageMultiplier, dirx, diry, spec.knockback, attacker.id);
       if (result) hits.push({ targetId: target.id, ...result });
     }
 

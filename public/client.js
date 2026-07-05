@@ -1,5 +1,5 @@
 import {
-  ARENA, ROOM, MATCH, PLAYER, COMBAT, ITEM_TYPES, DESKS, AVATARS,
+  ARENA, ROOM, MATCH, PLAYER, COMBAT, ITEM_TYPES, POWERUPS, DESKS, PARTITIONS, OBSTACLES, AVATARS,
   clamp, normalizeAngleDiff
 } from '/shared/constants.js';
 
@@ -44,7 +44,8 @@ const state = {
     endAt: 0,
     players: new Map(),
     items: new Map(),
-    projectiles: new Map()
+    projectiles: new Map(),
+    powerups: new Map()
   },
   shakeAmount: 0,
   lastPunchAt: 0,
@@ -267,16 +268,95 @@ resizeCanvas();
 
 function drawDesk(d) {
   ctx.save();
-  ctx.fillStyle = 'rgba(0,0,0,0.22)';
-  ctx.beginPath(); ctx.roundRect(d.x + 8, d.y + 12, d.w, d.h, 12); ctx.fill();
-  ctx.fillStyle = '#2f2347';
-  ctx.strokeStyle = '#4b3b70';
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.beginPath(); ctx.roundRect(d.x + 8, d.y + 12, d.w, d.h, 10); ctx.fill();
+
+  ctx.fillStyle = '#5c4433';
+  ctx.strokeStyle = '#3d2c20';
   ctx.lineWidth = 2.5;
-  ctx.beginPath(); ctx.roundRect(d.x, d.y, d.w, d.h, 12); ctx.fill(); ctx.stroke();
-  ctx.fillStyle = '#171124';
-  ctx.fillRect(d.x + 15, d.y + 8, 30, 6);
-  ctx.fillStyle = '#7a4ff0';
-  ctx.fillRect(d.x + 18, d.y + 20, 24, 4);
+  ctx.beginPath(); ctx.roundRect(d.x, d.y, d.w, d.h, 10); ctx.fill(); ctx.stroke();
+
+  ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+  ctx.lineWidth = 1;
+  for (let i = 1; i < 3; i++) {
+    ctx.beginPath();
+    ctx.moveTo(d.x + 6, d.y + (d.h / 3) * i);
+    ctx.lineTo(d.x + d.w - 6, d.y + (d.h / 3) * i);
+    ctx.stroke();
+  }
+
+  const cx = d.x + d.w / 2, cy = d.y + d.h / 2;
+  const lw = 34, lh = 22;
+  const laptopX = cx - lw / 2, laptopY = cy - lh / 2 - 4;
+
+  ctx.fillStyle = '#cfd3d8'; ctx.strokeStyle = '#8a8f96'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.roundRect(laptopX, laptopY + lh - 5, lw, 6, 2); ctx.fill(); ctx.stroke();
+
+  ctx.fillStyle = '#1b1f24'; ctx.strokeStyle = '#8a8f96';
+  ctx.beginPath(); ctx.roundRect(laptopX + 2, laptopY - 12, lw - 4, 14, 2); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = 'rgba(0, 210, 255, 0.55)';
+  ctx.fillRect(laptopX + 4, laptopY - 10, lw - 8, 10);
+
+  ctx.fillStyle = '#2d3436'; ctx.strokeStyle = '#171a1c'; ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.roundRect(cx - 16, cy + lh / 2 + 2, 32, 10, 2); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#57606a';
+  for (let r = 0; r < 2; r++) {
+    for (let c = 0; c < 7; c++) ctx.fillRect(cx - 14 + c * 4.4, cy + lh / 2 + 4 + r * 4, 2.6, 2.6);
+  }
+
+  ctx.fillStyle = '#e8e2d5'; ctx.strokeStyle = '#b0a692'; ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.arc(d.x + d.w - 14, d.y + 14, 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.arc(d.x + d.w - 8, d.y + 14, 3, -Math.PI / 2, Math.PI / 2); ctx.stroke();
+
+  ctx.restore();
+}
+
+function drawPartition(p) {
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.22)';
+  ctx.fillRect(p.x + 4, p.y + 5, p.w, p.h);
+
+  const grad = ctx.createLinearGradient(p.x, p.y, p.x + p.w, p.y);
+  grad.addColorStop(0, '#8b93a8');
+  grad.addColorStop(1, '#6b7386');
+  ctx.fillStyle = grad;
+  ctx.strokeStyle = '#4c5266';
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.roundRect(p.x, p.y, p.w, p.h, 4); ctx.fill(); ctx.stroke();
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+  ctx.lineWidth = 1;
+  for (let i = 1; i < 5; i++) {
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y + (p.h / 5) * i);
+    ctx.lineTo(p.x + p.w, p.y + (p.h / 5) * i);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+const COWORKER_DESK_INDICES = [0, 1, 4, 5];
+const COWORKERS = COWORKER_DESK_INDICES.map((deskIdx, i) => ({
+  desk: DESKS[deskIdx],
+  seed: i * 1.7,
+  skinTone: ['#e8b98a', '#c68863', '#8d5a3c', '#f0c9a0'][i % 4],
+  shirt: ['#5c6bc0', '#26a69a', '#8d6e63', '#78909c'][i % 4]
+}));
+
+function drawCoworker(npc) {
+  const cx = npc.desk.x + npc.desk.w / 2;
+  const cy = npc.desk.y + npc.desk.h + 16;
+  const bob = Math.sin(performance.now() / 900 + npc.seed) * 1.5;
+  ctx.save();
+  ctx.translate(cx, cy + bob);
+  ctx.fillStyle = 'rgba(0,0,0,0.2)';
+  ctx.beginPath(); ctx.ellipse(0, 10, 13, 5, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = npc.shirt;
+  ctx.beginPath(); ctx.ellipse(0, 4, 13, 9, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = npc.skinTone;
+  ctx.beginPath(); ctx.arc(0, -6, 8, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = 'rgba(40,30,25,0.6)';
+  ctx.beginPath(); ctx.arc(0, -9, 8, Math.PI, Math.PI * 2); ctx.fill();
   ctx.restore();
 }
 
@@ -303,6 +383,75 @@ function drawGroundItem(item) {
   const floatY = Math.sin(performance.now() / 300 + item.x) * 3;
   ctx.translate(item.x, item.y + floatY);
   drawItemIcon(item.type, ctx);
+  ctx.restore();
+}
+
+const POWERUP_ICONS = { coffee: '☕', tea: '🍵', lemonade: '🍋', pizza: '🍕', burger: '🍔' };
+
+function aOrAn(word) {
+  return /^[aeiou]/i.test(word) ? 'an' : 'a';
+}
+
+function drawPowerupIcon(type, ctx) {
+  const spec = POWERUPS[type];
+  if (type === 'coffee') {
+    ctx.fillStyle = '#fff'; ctx.strokeStyle = '#3d2c20'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.roundRect(-9, -6, 18, 14, 3); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = spec.color;
+    ctx.beginPath(); ctx.roundRect(-7, -4, 14, 6, 2); ctx.fill();
+    ctx.strokeStyle = '#3d2c20';
+    ctx.beginPath(); ctx.arc(10, 0, 4, -Math.PI / 2, Math.PI / 2); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 1.4;
+    ctx.beginPath(); ctx.moveTo(-3, -10); ctx.quadraticCurveTo(-6, -14, -3, -18); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(3, -10); ctx.quadraticCurveTo(0, -14, 3, -18); ctx.stroke();
+  } else if (type === 'tea') {
+    ctx.fillStyle = '#fff'; ctx.strokeStyle = '#2d5a3d'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.roundRect(-9, -6, 18, 14, 3); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = spec.color;
+    ctx.beginPath(); ctx.roundRect(-7, -4, 14, 6, 2); ctx.fill();
+    ctx.strokeStyle = '#2d5a3d';
+    ctx.beginPath(); ctx.arc(10, 0, 4, -Math.PI / 2, Math.PI / 2); ctx.stroke();
+    ctx.strokeStyle = '#c0392b'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(2, -6); ctx.lineTo(6, -14); ctx.stroke();
+    ctx.fillStyle = '#f4d03f'; ctx.fillRect(4, -17, 5, 4);
+  } else if (type === 'lemonade') {
+    ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.strokeStyle = '#c9a227'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(-7, -10); ctx.lineTo(7, -10); ctx.lineTo(5, 10); ctx.lineTo(-5, 10); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = spec.color;
+    ctx.beginPath(); ctx.moveTo(-6, 0); ctx.lineTo(6, 0); ctx.lineTo(5, 10); ctx.lineTo(-5, 10); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#e74c3c'; ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.moveTo(2, -10); ctx.lineTo(6, -18); ctx.stroke();
+    ctx.fillStyle = '#f6e58d';
+    ctx.beginPath(); ctx.arc(0, -12, 3, 0, Math.PI * 2); ctx.fill();
+  } else if (type === 'pizza') {
+    ctx.fillStyle = '#e8c07d'; ctx.strokeStyle = '#a9762f'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(0, -12); ctx.lineTo(11, 10); ctx.lineTo(-11, 10); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = spec.color;
+    ctx.beginPath(); ctx.moveTo(0, -8); ctx.lineTo(8, 8); ctx.lineTo(-8, 8); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#7c2d12';
+    [[0, -2], [-3, 3], [3, 4]].forEach(([px, py]) => { ctx.beginPath(); ctx.arc(px, py, 1.6, 0, Math.PI * 2); ctx.fill(); });
+  } else if (type === 'burger') {
+    ctx.fillStyle = '#e2a03f'; ctx.strokeStyle = '#8a5a1e'; ctx.lineWidth = 1.4;
+    ctx.beginPath(); ctx.ellipse(0, -6, 10, 5, 0, Math.PI, 0, true); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#6b4226';
+    ctx.beginPath(); ctx.roundRect(-10, -3, 20, 4, 2); ctx.fill();
+    ctx.fillStyle = '#7cb342';
+    ctx.beginPath(); ctx.roundRect(-10, 1, 20, 2.5, 1); ctx.fill();
+    ctx.fillStyle = spec.color; ctx.strokeStyle = '#8a5a1e';
+    ctx.beginPath(); ctx.ellipse(0, 6, 10, 5, 0, 0, Math.PI); ctx.fill(); ctx.stroke();
+  }
+}
+
+function drawGroundPowerup(pu) {
+  ctx.save();
+  const floatY = Math.sin(performance.now() / 260 + pu.x * 1.3) * 4;
+  ctx.translate(pu.x, pu.y + floatY);
+  const glowColor = POWERUPS[pu.type].color;
+  ctx.shadowColor = glowColor; ctx.shadowBlur = 14;
+  ctx.globalAlpha = 0.5; ctx.strokeStyle = glowColor; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(0, 0, 20, 0, Math.PI * 2); ctx.stroke();
+  ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+  drawPowerupIcon(pu.type, ctx);
   ctx.restore();
 }
 
@@ -414,7 +563,16 @@ function drawPlayer(p) {
   } else {
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'center';
-    ctx.fillText(p.name, 0, -PLAYER.radius - 22);
+    let nameY = -PLAYER.radius - 22;
+    const hasSpeedBuff = Date.now() < p.speedBuffUntil;
+    const hasDamageBuff = Date.now() < p.damageBuffUntil;
+    if (hasSpeedBuff || hasDamageBuff) {
+      ctx.font = '12px system-ui';
+      const buffText = `${hasSpeedBuff ? '⚡' : ''}${hasDamageBuff ? '🔥' : ''}`;
+      ctx.fillText(buffText, 0, nameY - 12);
+    }
+    ctx.font = 'bold 11px system-ui';
+    ctx.fillText(p.name, 0, nameY);
 
     const barW = 50;
     ctx.fillStyle = 'rgba(0,0,0,0.4)';
@@ -464,6 +622,9 @@ function render() {
   ctx.strokeRect(0, 0, ARENA.width, ARENA.height);
 
   DESKS.forEach(drawDesk);
+  PARTITIONS.forEach(drawPartition);
+  COWORKERS.forEach(drawCoworker);
+  state.match.powerups.forEach(drawGroundPowerup);
   state.match.items.forEach(item => { if (!item.heldBy) drawGroundItem(item); });
   state.match.projectiles.forEach(drawProjectile);
   particles.draw(ctx);
@@ -505,7 +666,7 @@ function updateArena(dt) {
     if (p.id === state.selfId) {
       if (p.status === 'active' && p.stunTimer <= 0) {
         const mv = getMovementVector();
-        const speed = PLAYER.speed;
+        const speed = PLAYER.speed * (Date.now() < p.speedBuffUntil ? p.speedBuffMultiplier : 1);
         p.vx += mv.x * speed * 10 * dt;
         p.vy += mv.y * speed * 10 * dt;
         p.vx *= 0.85; p.vy *= 0.85;
@@ -513,7 +674,7 @@ function updateArena(dt) {
 
         p.x = clamp(p.x, PLAYER.radius, ARENA.width - PLAYER.radius);
         p.y = clamp(p.y, PLAYER.radius, ARENA.height - PLAYER.radius);
-        for (const d of DESKS) resolveDeskCollision(p, d);
+        for (const d of OBSTACLES) resolveDeskCollision(p, d);
 
         if (mv.x !== 0 || mv.y !== 0) p.angle = Math.atan2(mv.y, mv.x);
         p.moving = mv.x !== 0 || mv.y !== 0;
@@ -692,6 +853,7 @@ socket.on('matchStarted', data => {
   state.match.players.clear();
   state.match.items.clear();
   state.match.projectiles.clear();
+  state.match.powerups.clear();
 
   data.players.forEach(sp => {
     const avatar = AVATARS[sp.avatarId] || AVATARS[0];
@@ -700,10 +862,12 @@ socket.on('matchStarted', data => {
       x: sp.x, y: sp.y, renderX: sp.x, renderY: sp.y, angle: sp.angle, renderAngle: sp.angle,
       vx: 0, vy: 0, hp: sp.hp, lives: sp.lives, status: sp.status, holding: sp.holding, holdingType: null,
       attackAnim: null, hitFlashTimer: 0, stunTimer: 0, invulnUntil: Date.now() + MATCH.respawnInvulnSec * 1000,
+      speedBuffUntil: 0, speedBuffMultiplier: 1, damageBuffUntil: 0,
       moving: false
     });
   });
   data.items.forEach(it => state.match.items.set(it.id, { ...it }));
+  (data.powerups || []).forEach(pu => state.match.powerups.set(pu.id, { ...pu }));
 
   killFeedEl.innerHTML = '';
   camera.x = ARENA.width / 2; camera.y = ARENA.height / 2;
@@ -773,11 +937,28 @@ socket.on('itemSpawned', item => {
   state.match.items.set(item.id, { id: item.id, type: item.type, x: item.x, y: item.y, heldBy: null });
 });
 
+socket.on('powerupSpawned', powerup => {
+  state.match.powerups.set(powerup.id, { ...powerup });
+});
+
+socket.on('powerupCollected', ({ id, type, playerId, newHp, buff, buffDurationSec, buffMultiplier }) => {
+  state.match.powerups.delete(id);
+  const player = state.match.players.get(playerId);
+  if (!player) return;
+  player.hp = newHp;
+  if (buff === 'speed') { player.speedBuffUntil = Date.now() + buffDurationSec * 1000; player.speedBuffMultiplier = buffMultiplier; }
+  if (buff === 'damage') { player.damageBuffUntil = Date.now() + buffDurationSec * 1000; }
+  sound.pickup();
+  particles.spawn(player.renderX, player.renderY, 10, POWERUPS[type].color);
+  pushKillFeed(`${POWERUP_ICONS[type] || ''} ${player.name} grabbed ${aOrAn(type)} ${type}! +${POWERUPS[type].heal} HP`);
+});
+
 socket.on('playerRespawned', ({ id, x, y, hp }) => {
   const p = state.match.players.get(id);
   if (!p) return;
   p.x = x; p.y = y; p.renderX = x; p.renderY = y; p.hp = hp; p.status = 'active';
   p.invulnUntil = Date.now() + MATCH.respawnInvulnSec * 1000;
+  p.speedBuffUntil = 0; p.damageBuffUntil = 0;
   if (id === state.selfId) pushKillFeed('You respawned!');
 });
 

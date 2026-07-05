@@ -31,6 +31,25 @@ export const ITEM_RESPAWN_SEC = 8;
 export const ITEM_PICKUP_RANGE = 46;
 export const THROW_SELF_HIT_GRACE_SEC = 0.12;
 
+// Power-ups restore HP players lost in combat, and a few grant a short buff.
+// Picked up automatically by walking over them (no throw/hold, unlike office items above).
+export const POWERUPS = {
+  coffee: { heal: 15, buff: 'speed', buffMultiplier: 1.6, buffDurationSec: 5, color: '#c68958' },
+  tea: { heal: 18, buff: null, buffMultiplier: 1, buffDurationSec: 0, color: '#8bc98a' },
+  lemonade: { heal: 20, buff: null, buffMultiplier: 1, buffDurationSec: 0, color: '#f4d03f' },
+  pizza: { heal: 30, buff: 'damage', buffMultiplier: 1.3, buffDurationSec: 6, color: '#e17055' },
+  burger: { heal: 35, buff: null, buffMultiplier: 1, buffDurationSec: 0, color: '#c0783c' }
+};
+export const POWERUP_TYPE_KEYS = Object.keys(POWERUPS);
+export const POWERUP_RESPAWN_SEC = 10;
+export const POWERUP_PICKUP_RANGE = 42;
+
+export const POWERUP_SPAWNS = [
+  { x: 1000, y: 500 }, { x: 600, y: 500 },
+  { x: 800, y: 350 }, { x: 800, y: 650 },
+  { x: 1050, y: 250 }, { x: 550, y: 750 }
+];
+
 export const DESKS = [
   { x: 150, y: 140, w: 150, h: 75 },
   { x: 1300, y: 140, w: 150, h: 75 },
@@ -39,6 +58,19 @@ export const DESKS = [
   { x: 725, y: 110, w: 150, h: 70 },
   { x: 725, y: 820, w: 150, h: 70 }
 ];
+
+// Cubicle divider walls placed alongside desks. Same rectangle collision as desks
+// (block players + thrown items) but rendered as thin partition panels, not furniture.
+export const PARTITIONS = [
+  { x: 310, y: 140, w: 14, h: 130 },
+  { x: 1276, y: 140, w: 14, h: 130 },
+  { x: 310, y: 730, w: 14, h: 130 },
+  { x: 1276, y: 730, w: 14, h: 130 },
+  { x: 660, y: 180, w: 14, h: 160 },
+  { x: 926, y: 660, w: 14, h: 160 }
+];
+
+export const OBSTACLES = [...DESKS, ...PARTITIONS];
 
 export const ITEM_SPAWNS = [
   { x: 420, y: 300 }, { x: 1180, y: 300 },
