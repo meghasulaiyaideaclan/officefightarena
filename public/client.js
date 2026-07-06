@@ -545,22 +545,29 @@ function drawZoneObstacle(o) {
   ctx.restore();
 }
 
+// The Relic of Ascension: an ancient circlet, its central gem lit from within.
 function drawCrownIcon(ctx) {
   ctx.fillStyle = CROWN.color; ctx.strokeStyle = '#b8860b'; ctx.lineWidth = 1.5;
   ctx.beginPath();
   ctx.moveTo(-12, 6); ctx.lineTo(-12, -4); ctx.lineTo(-6, 2); ctx.lineTo(0, -8);
   ctx.lineTo(6, 2); ctx.lineTo(12, -4); ctx.lineTo(12, 6); ctx.closePath();
   ctx.fill(); ctx.stroke();
+  ctx.save();
+  ctx.shadowColor = '#fff5cc'; ctx.shadowBlur = 8;
   ctx.fillStyle = '#fff5cc';
-  [-9, 0, 9].forEach(dx => { ctx.beginPath(); ctx.arc(dx, -3, 1.6, 0, Math.PI * 2); ctx.fill(); });
+  ctx.beginPath(); ctx.arc(0, -3, 2.6, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+  ctx.fillStyle = 'rgba(255,245,204,0.7)';
+  [-9, 9].forEach(dx => { ctx.beginPath(); ctx.arc(dx, -2, 1.6, 0, Math.PI * 2); ctx.fill(); });
 }
 
 function drawGroundCrown(crown) {
   ctx.save();
   const floatY = Math.sin(performance.now() / 220) * 5;
+  const pulse = 0.5 + Math.sin(performance.now() / 260) * 0.15;
   ctx.translate(crown.x, crown.y + floatY);
-  ctx.shadowColor = CROWN.color; ctx.shadowBlur = 20;
-  ctx.globalAlpha = 0.55; ctx.strokeStyle = CROWN.color; ctx.lineWidth = 2;
+  ctx.shadowColor = CROWN.color; ctx.shadowBlur = 24;
+  ctx.globalAlpha = pulse; ctx.strokeStyle = CROWN.color; ctx.lineWidth = 2;
   ctx.beginPath(); ctx.arc(0, 0, 24, 0, Math.PI * 2); ctx.stroke();
   ctx.globalAlpha = 1; ctx.shadowBlur = 0;
   drawCrownIcon(ctx);
@@ -570,27 +577,46 @@ function drawGroundCrown(crown) {
 function drawItemIcon(type, ctx) {
   const spec = ITEM_TYPES[type];
   if (type === 'stapler') {
-    ctx.fillStyle = spec.color; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.roundRect(-14, -6, 28, 12, 4); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = '#fff'; ctx.fillRect(-10, -1, 20, 2);
+    // Throwing Shard: a sliver of crystal, light and fast.
+    ctx.save();
+    ctx.shadowColor = spec.color; ctx.shadowBlur = 8;
+    ctx.fillStyle = spec.color; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(0, -15); ctx.lineTo(6, -2); ctx.lineTo(0, 15); ctx.lineTo(-6, -2); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, -15); ctx.lineTo(0, 15); ctx.stroke();
+    ctx.restore();
   } else if (type === 'keyboard') {
-    ctx.fillStyle = spec.color; ctx.strokeStyle = '#7a4ff0'; ctx.lineWidth = 2;
+    // Rune Tablet: carved stone etched with a glowing sigil.
+    ctx.fillStyle = spec.color; ctx.strokeStyle = '#5c584c'; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.roundRect(-16, -9, 32, 18, 3); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = '#7a4ff0';
+    ctx.save();
+    ctx.shadowColor = '#d4a63d'; ctx.shadowBlur = 6;
+    ctx.fillStyle = 'rgba(212,166,61,0.9)';
     for (let r = 0; r < 2; r++) for (let c = 0; c < 5; c++) ctx.fillRect(-13 + c * 6, -5 + r * 7, 3, 3);
+    ctx.restore();
   } else if (type === 'chair') {
-    ctx.fillStyle = spec.color; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5;
-    ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = '#2d3436'; ctx.fillRect(-7, -7, 14, 14);
+    // Ironwood Bough: a heavy branch torn from an ancient tree.
+    ctx.save();
+    ctx.rotate(0.5);
+    ctx.fillStyle = spec.color; ctx.strokeStyle = '#3a2d1e'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.roundRect(-18, -6, 36, 12, 6); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 1;
+    [-9, 0, 9].forEach(x => { ctx.beginPath(); ctx.arc(x, 0, 2.5, 0, Math.PI * 2); ctx.stroke(); });
+    ctx.restore();
   } else if (type === 'table') {
-    ctx.fillStyle = '#5c3d24';
-    [[-17, -9], [17, -9], [-17, 9], [17, 9]].forEach(([lx, ly]) => {
-      ctx.beginPath(); ctx.arc(lx, ly, 3, 0, Math.PI * 2); ctx.fill();
-    });
-    ctx.fillStyle = spec.color; ctx.strokeStyle = '#5c3d24'; ctx.lineWidth = 2.5;
-    ctx.beginPath(); ctx.roundRect(-20, -12, 40, 24, 4); ctx.fill(); ctx.stroke();
-    ctx.strokeStyle = 'rgba(0,0,0,0.2)'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(-20, 0); ctx.lineTo(20, 0); ctx.stroke();
+    // Sundering Boulder: a jagged chunk of stone, rare and devastating.
+    ctx.fillStyle = 'rgba(0,0,0,0.15)';
+    ctx.beginPath(); ctx.ellipse(0, 14, 20, 6, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = spec.color; ctx.strokeStyle = '#4a4740'; ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(-18, -6); ctx.lineTo(-6, -16); ctx.lineTo(10, -14); ctx.lineTo(19, 2);
+    ctx.lineTo(12, 14); ctx.lineTo(-8, 16); ctx.lineTo(-19, 6); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.moveTo(-6, -16); ctx.lineTo(-2, 6); ctx.lineTo(-8, 16); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(10, -14); ctx.lineTo(-2, 6); ctx.lineTo(12, 14); ctx.stroke();
   }
 }
 
@@ -640,21 +666,25 @@ function drawPowerupIcon(type, ctx) {
     ctx.fillStyle = '#f6e58d';
     ctx.beginPath(); ctx.arc(0, -12, 3, 0, Math.PI * 2); ctx.fill();
   } else if (type === 'pizza') {
-    ctx.fillStyle = '#e8c07d'; ctx.strokeStyle = '#a9762f'; ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.moveTo(0, -12); ctx.lineTo(11, 10); ctx.lineTo(-11, 10); ctx.closePath(); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = spec.color;
-    ctx.beginPath(); ctx.moveTo(0, -8); ctx.lineTo(8, 8); ctx.lineTo(-8, 8); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = '#7c2d12';
-    [[0, -2], [-3, 3], [3, 4]].forEach(([px, py]) => { ctx.beginPath(); ctx.arc(px, py, 1.6, 0, Math.PI * 2); ctx.fill(); });
+    // Blessing of Power: a smoldering ember-fruit, warm to the touch.
+    ctx.save();
+    ctx.shadowColor = spec.color; ctx.shadowBlur = 10;
+    ctx.fillStyle = spec.color; ctx.strokeStyle = '#7a2f1a'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(0, 0, 11, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.restore();
+    ctx.strokeStyle = 'rgba(255,220,180,0.7)'; ctx.lineWidth = 1.2;
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2;
+      ctx.beginPath(); ctx.moveTo(Math.cos(a) * 4, Math.sin(a) * 4); ctx.lineTo(Math.cos(a) * 10, Math.sin(a) * 10); ctx.stroke();
+    }
   } else if (type === 'burger') {
-    ctx.fillStyle = '#e2a03f'; ctx.strokeStyle = '#8a5a1e'; ctx.lineWidth = 1.4;
-    ctx.beginPath(); ctx.ellipse(0, -6, 10, 5, 0, Math.PI, 0, true); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = '#6b4226';
-    ctx.beginPath(); ctx.roundRect(-10, -3, 20, 4, 2); ctx.fill();
-    ctx.fillStyle = '#7cb342';
-    ctx.beginPath(); ctx.roundRect(-10, 1, 20, 2.5, 1); ctx.fill();
-    ctx.fillStyle = spec.color; ctx.strokeStyle = '#8a5a1e';
-    ctx.beginPath(); ctx.ellipse(0, 6, 10, 5, 0, 0, Math.PI); ctx.fill(); ctx.stroke();
+    // Ancient Feast: a stacked bundle of enchanted bread, hearty and warm.
+    ctx.fillStyle = '#c68958'; ctx.strokeStyle = '#7a5230'; ctx.lineWidth = 1.4;
+    ctx.beginPath(); ctx.ellipse(0, -5, 10, 6, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = spec.color; ctx.strokeStyle = '#7a5230';
+    ctx.beginPath(); ctx.ellipse(0, 5, 11, 6.5, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(0, -5, 5, Math.PI, Math.PI * 2); ctx.stroke();
   }
 }
 
@@ -971,41 +1001,50 @@ function drawBossOverlay(canvasWidth) {
   ctx.fillStyle = 'rgba(0,0,0,0.35)';
   ctx.beginPath(); ctx.ellipse(0, 115, 95, 20, 0, 0, Math.PI * 2); ctx.fill();
 
-  ctx.fillStyle = '#2d2d3a';
+  ctx.fillStyle = '#3d3a34';
   ctx.beginPath(); ctx.ellipse(-32, 92, 19, 28, 0, 0, Math.PI * 2); ctx.fill();
   ctx.beginPath(); ctx.ellipse(32, 92, 19, 28, 0, 0, Math.PI * 2); ctx.fill();
 
-  ctx.fillStyle = '#3b3050'; ctx.strokeStyle = '#1c1730'; ctx.lineWidth = 4;
+  ctx.fillStyle = '#4a4740'; ctx.strokeStyle = '#2b2924'; ctx.lineWidth = 4;
   ctx.beginPath(); ctx.ellipse(0, 20, 98, 88, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
 
-  ctx.fillStyle = '#3b3050';
+  ctx.fillStyle = '#4a4740';
   ctx.beginPath(); ctx.ellipse(-98, 10, 25, 42, -0.3, 0, Math.PI * 2); ctx.fill();
   ctx.beginPath(); ctx.ellipse(98, 10, 25, 42, 0.3, 0, Math.PI * 2); ctx.fill();
 
-  ctx.fillStyle = '#f4f4f8';
+  // A carved rune of judgment glowing across the Guardian's chest, where a tie once was.
+  ctx.save();
+  ctx.shadowColor = '#d4a63d'; ctx.shadowBlur = 12;
+  ctx.strokeStyle = 'rgba(212,166,61,0.9)'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(-22, -50); ctx.lineTo(22, -50); ctx.lineTo(11, 62); ctx.lineTo(-11, 62); ctx.closePath(); ctx.stroke();
+  ctx.fillStyle = 'rgba(212,166,61,0.18)';
   ctx.beginPath(); ctx.moveTo(-22, -50); ctx.lineTo(22, -50); ctx.lineTo(11, 62); ctx.lineTo(-11, 62); ctx.closePath(); ctx.fill();
-  ctx.fillStyle = '#ff0844';
-  ctx.beginPath(); ctx.moveTo(-9, -45); ctx.lineTo(9, -45); ctx.lineTo(4, 56); ctx.lineTo(-4, 56); ctx.closePath(); ctx.fill();
+  ctx.restore();
+  ctx.strokeStyle = 'rgba(212,166,61,0.7)'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(-9, -45); ctx.lineTo(9, -45); ctx.lineTo(4, 56); ctx.lineTo(-4, 56); ctx.closePath(); ctx.stroke();
 
-  ctx.fillStyle = '#e8b98a'; ctx.strokeStyle = '#a9673f'; ctx.lineWidth = 3;
+  ctx.fillStyle = '#6d6a60'; ctx.strokeStyle = '#46433c'; ctx.lineWidth = 3;
   ctx.beginPath(); ctx.arc(0, -88, 44, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
 
-  ctx.strokeStyle = '#3d2c1e'; ctx.lineWidth = 5; ctx.lineCap = 'round';
+  ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 4; ctx.lineCap = 'round';
   ctx.beginPath(); ctx.moveTo(-25, -102); ctx.lineTo(-6, -95); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(25, -102); ctx.lineTo(6, -95); ctx.stroke();
 
-  ctx.fillStyle = '#000';
+  ctx.save();
+  ctx.shadowColor = '#d4a63d'; ctx.shadowBlur = 10;
+  ctx.fillStyle = '#ffdb85';
   ctx.beginPath(); ctx.arc(-13, -88, 4.5, 0, Math.PI * 2); ctx.arc(13, -88, 4.5, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
 
-  ctx.strokeStyle = '#7a3b2e'; ctx.lineWidth = 4;
+  ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 4;
   ctx.beginPath(); ctx.arc(0, -58, 15, Math.PI * 0.15, Math.PI * 0.85); ctx.stroke();
 
   ctx.restore();
 
-  ctx.fillStyle = state.match.bossEvent.phase === 'warning' ? '#ffc048' : '#ff0844';
+  ctx.fillStyle = state.match.bossEvent.phase === 'warning' ? '#d4a63d' : '#d9694a';
   ctx.font = '900 16px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillText(
-    state.match.bossEvent.phase === 'warning' ? '⚠️ TAKE COVER! ⚠️' : '💥 STOMP! 💥',
+    state.match.bossEvent.phase === 'warning' ? '⚠️ FIND SHELTER! ⚠️' : '💥 GUARDIAN\'S JUDGMENT! 💥',
     cx, cy + 145
   );
 }

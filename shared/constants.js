@@ -75,12 +75,12 @@ export const COMBAT = {
 };
 
 export const ITEM_TYPES = {
-  stapler: { damage: 14, throwSpeed: 900, knockback: 300, radius: 12, maxRange: 1100, color: '#ff6b6b' },
-  keyboard: { damage: 20, throwSpeed: 720, knockback: 380, radius: 15, maxRange: 1000, color: '#2d3436' },
-  chair: { damage: 28, throwSpeed: 540, knockback: 520, radius: 20, maxRange: 900, color: '#a29bfe' },
+  stapler: { damage: 14, throwSpeed: 900, knockback: 300, radius: 12, maxRange: 1100, color: '#8fd6e8' },
+  keyboard: { damage: 20, throwSpeed: 720, knockback: 380, radius: 15, maxRange: 1000, color: '#8a8578' },
+  chair: { damage: 28, throwSpeed: 540, knockback: 520, radius: 20, maxRange: 900, color: '#5a4632' },
   // A rare, devastating heavy weapon - a full hit takes a player from 100 HP straight to a KO.
   // Deliberately slow and short-ranged so it can't be spammed like the lighter items.
-  table: { damage: 100, throwSpeed: 420, knockback: 650, radius: 26, maxRange: 650, color: '#8b5e3c' }
+  table: { damage: 100, throwSpeed: 420, knockback: 650, radius: 26, maxRange: 650, color: '#7d7a72' }
 };
 // Only these spawn in the common random rotation; 'table' spawns separately (see TABLE_SPAWNS).
 export const ITEM_TYPE_KEYS = ['stapler', 'keyboard', 'chair'];
@@ -93,11 +93,11 @@ export const THROW_SELF_HIT_GRACE_SEC = 0.12;
 // Power-ups restore HP players lost in combat, and a few grant a short buff.
 // Picked up automatically by walking over them (no throw/hold, unlike office items above).
 export const POWERUPS = {
-  coffee: { heal: 15, buff: 'speed', buffMultiplier: 1.6, buffDurationSec: 5, color: '#c68958' },
-  tea: { heal: 18, buff: null, buffMultiplier: 1, buffDurationSec: 0, color: '#8bc98a' },
+  coffee: { heal: 15, buff: 'speed', buffMultiplier: 1.6, buffDurationSec: 5, color: '#4fb3e8' },
+  tea: { heal: 18, buff: null, buffMultiplier: 1, buffDurationSec: 0, color: '#4fb39e' },
   lemonade: { heal: 20, buff: null, buffMultiplier: 1, buffDurationSec: 0, color: '#f4d03f' },
-  pizza: { heal: 30, buff: 'damage', buffMultiplier: 1.3, buffDurationSec: 6, color: '#e17055' },
-  burger: { heal: 35, buff: null, buffMultiplier: 1, buffDurationSec: 0, color: '#c0783c' }
+  pizza: { heal: 30, buff: 'damage', buffMultiplier: 1.3, buffDurationSec: 6, color: '#d9694a' },
+  burger: { heal: 35, buff: null, buffMultiplier: 1, buffDurationSec: 0, color: '#d4a63d' }
 };
 export const POWERUP_TYPE_KEYS = Object.keys(POWERUPS);
 export const POWERUP_RESPAWN_SEC = 10;
