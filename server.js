@@ -713,7 +713,7 @@ function tick(room) {
       const landResult = landThrownPlayer(room, thrown, tp.x, tp.y, impactDamage);
       room.io.to(room.code).emit('playerLanded', {
         id: thrown.id, x: landResult.x, y: landResult.y, newHp: landResult.newHp, newLives: landResult.newLives,
-        koed: landResult.koed, eliminated: landResult.eliminated,
+        koed: landResult.koed, eliminated: landResult.eliminated, thrownBy: tp.thrownBy,
         hit: hitResult ? { targetId: hitTarget.id, ...hitResult } : null
       });
     }

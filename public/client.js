@@ -109,6 +109,10 @@ class SoundManager {
   }
   bossStomp() { this.tone(70, 0.4, 'square', 0.25, 140); }
   crash() { this.tone(120, 0.3, 'sawtooth', 0.22, 90); }
+  finish() {
+    this.tone(80, 0.3, 'square', 0.24, 200);
+    setTimeout(() => this.tone(880, 0.25, 'triangle', 0.16, 1200), 70);
+  }
 }
 const sound = new SoundManager();
 window.addEventListener('pointerdown', () => { sound.init(); sound.resume(); }, { once: true });
@@ -902,6 +906,14 @@ function render() {
 
   ctx.translate(tx + sx, ty + sy);
 
+  if (performance.now() < cinematicZoomUntil) {
+    const remain = (cinematicZoomUntil - performance.now()) / CINEMATIC_ZOOM_MS;
+    const zoomScale = 1 + 0.16 * remain;
+    ctx.translate(camera.x, camera.y);
+    ctx.scale(zoomScale, zoomScale);
+    ctx.translate(-camera.x, -camera.y);
+  }
+
   ctx.fillStyle = '#151221';
   ctx.fillRect(0, 0, ARENA.width, ARENA.height);
   ctx.strokeStyle = '#211f31'; ctx.lineWidth = 2;
@@ -1102,12 +1114,21 @@ function drawBossOverlay(canvasWidth) {
 // ---------------- Game loop ----------------
 let lastTime = 0;
 let leaderboardTimer = 0;
+let hitStopUntil = 0;
+let cinematicZoomUntil = 0;
+const HITSTOP_MS = 160;
+const HITSTOP_FACTOR = 0.08;
+const CINEMATIC_ZOOM_MS = 550;
 
 function loop(ts) {
   requestAnimationFrame(loop);
   if (!lastTime) lastTime = ts;
-  const dt = Math.min(0.1, (ts - lastTime) / 1000);
+  let dt = Math.min(0.1, (ts - lastTime) / 1000);
   lastTime = ts;
+  // Hit-stop: briefly slow this client's own render/particle clock on a significant elimination.
+  // Only ever applied for the eliminated player's own client (see triggerFinishCinematic) -
+  // the eliminator's client is never slowed, so a kill can't be used to stall for time.
+  if (performance.now() < hitStopUntil) dt *= HITSTOP_FACTOR;
 
   if (state.screen === 'arena') {
     updateArena(dt);
@@ -1308,12 +1329,53 @@ function triggerDamageFlash() {
   setTimeout(() => vig.classList.remove('damaged-vignette'), 180);
 }
 
+function zoneIdForY(y) {
+  for (const [id, z] of Object.entries(ZONES)) { if (y >= z.yMin && y <= z.yMax) return id; }
+  return null;
+}
+
+// Named cinematic finishes: classified from data the destructible/realm-event systems already
+// produce (weapon type, zone, which obstacle kind broke) - purely presentational, no server hint needed.
+function classifyFinish({ weaponType, x, y, obstacleKind }) {
+  const zone = zoneIdForY(y);
+  if (weaponType === 'guardian') return 'GUARDIAN SLAM';
+  if (weaponType === 'blast') return obstacleKind === 'partition' ? 'CRYSTAL BREAK' : 'PILLAR COLLAPSE';
+  if (weaponType === 'table') return 'TITAN IMPACT';
+  if (weaponType === 'thrownPlayer' && zone === 'rooftop') return 'SKYFALL THROW';
+  if (zone === 'park' && ZONE_OBSTACLES.some(o => o.kind === 'tree' && Math.hypot(o.x + o.w / 2 - x, o.y + o.h / 2 - y) < 90)) return 'TREE CRUSH';
+  return 'DECISIVE BLOW';
+}
+
+// Cinematic finishes are entirely client-local: only the eliminated player and their eliminator
+// ever see the zoom/flash/hit-stop. Everyone else just sees the normal kill-feed line, so a
+// finish never interrupts anyone else's fight. Hit-stop (a real slow-down of this client's own
+// render clock) only ever applies to the eliminated player - they're already out of the fight,
+// so freezing their screen briefly can't be used to stall; the eliminator only gets a camera
+// punch-in and keeps moving at full speed.
+function triggerFinishCinematic({ x, y, weaponType, obstacleKind, attackerId, targetId }) {
+  const isTarget = targetId === state.selfId;
+  const isAttacker = attackerId != null && attackerId === state.selfId;
+  if (!isTarget && !isAttacker) return;
+
+  const name = classifyFinish({ weaponType, x, y, obstacleKind });
+  const el = document.getElementById('finish-flash');
+  document.getElementById('finish-flash-text').textContent = name;
+  el.classList.add('active');
+  clearTimeout(triggerFinishCinematic.hideTimer);
+  triggerFinishCinematic.hideTimer = setTimeout(() => el.classList.remove('active'), 1100);
+
+  sound.finish();
+  cinematicZoomUntil = performance.now() + CINEMATIC_ZOOM_MS;
+  state.shakeAmount = Math.max(state.shakeAmount, 30);
+  if (isTarget) hitStopUntil = performance.now() + HITSTOP_MS;
+}
+
 function escapeHtml(str) {
   return String(str).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
 // ---------------- Applying combat results ----------------
-function applyHitToPlayer(target, hit) {
+function applyHitToPlayer(target, hit, weaponType = null) {
   target.x = hit.x; target.y = hit.y;
   if (target.id === state.selfId) { target.renderX = hit.x; target.renderY = hit.y; target.vx = 0; target.vy = 0; }
   target.hp = hit.newHp;
@@ -1332,6 +1394,7 @@ function applyHitToPlayer(target, hit) {
   if (hit.eliminated) {
     pushKillFeed(`💥 ${attackerName} defeated ${target.name}!`);
     sound.ko();
+    triggerFinishCinematic({ x: hit.x, y: hit.y, weaponType, attackerId: hit.attackerId, targetId: target.id });
   } else if (hit.koed) {
     pushKillFeed(`🤕 ${attackerName} struck down ${target.name}!`);
     sound.ko();
@@ -1446,18 +1509,19 @@ socket.on('attackResult', ({ attackerId, type, angle, x, y, hits }) => {
   }
   hits.forEach(hit => {
     const target = state.match.players.get(hit.targetId);
-    if (target) applyHitToPlayer(target, hit);
+    if (target) applyHitToPlayer(target, hit, type);
   });
 });
 
 socket.on('projectileHit', ({ itemId, targetId, ...hit }) => {
   const proj = state.match.projectiles.get(itemId);
+  const itemType = proj ? proj.itemType : null;
   if (proj) {
     particles.spawn(proj.renderX, proj.renderY, 10, ITEM_TYPES[proj.itemType].color);
     state.match.projectiles.delete(itemId);
   }
   const target = state.match.players.get(targetId);
-  if (target) applyHitToPlayer(target, { ...hit, attackerId: hit.attackerId });
+  if (target) applyHitToPlayer(target, { ...hit, attackerId: hit.attackerId }, itemType);
 });
 
 socket.on('projectileSync', list => {
@@ -1529,7 +1593,7 @@ socket.on('thrownPlayerSync', list => {
   });
 });
 
-socket.on('playerLanded', ({ id, x, y, newHp, newLives, koed, eliminated, hit }) => {
+socket.on('playerLanded', ({ id, x, y, newHp, newLives, koed, eliminated, thrownBy, hit }) => {
   state.match.thrownPlayers.delete(id);
   const target = state.match.players.get(id);
   if (target) {
@@ -1542,10 +1606,11 @@ socket.on('playerLanded', ({ id, x, y, newHp, newLives, koed, eliminated, hit })
     if (eliminated) pushKillFeed(`💥 ${target.name} was defeated on landing!`);
     else if (koed) pushKillFeed(`🤕 ${target.name} was struck down on landing!`);
     if (target.id === state.selfId) { state.shakeAmount = 14; triggerDamageFlash(); }
+    if (eliminated) triggerFinishCinematic({ x, y, weaponType: 'thrownPlayer', attackerId: thrownBy, targetId: id });
   }
   if (hit) {
     const hitPlayer = state.match.players.get(hit.targetId);
-    if (hitPlayer) applyHitToPlayer(hitPlayer, hit);
+    if (hitPlayer) applyHitToPlayer(hitPlayer, hit, 'thrownPlayer');
   }
 });
 
@@ -1694,6 +1759,7 @@ socket.on('bossResolved', ({ hits }) => {
     pushKillFeed(hit.eliminated
       ? `💥 ${target.name} found no shelter and was defeated!`
       : `💥 ${target.name} found no shelter and was struck down!`);
+    if (hit.eliminated) triggerFinishCinematic({ x: hit.x, y: hit.y, weaponType: 'guardian', attackerId: null, targetId: target.id });
   });
   if (hits.length === 0) pushKillFeed('😮‍💨 Every champion found shelter in time!');
 });
@@ -1716,6 +1782,7 @@ socket.on('obstacleDestroyed', ({ id, x, y, w, h, kind, blastHits }) => {
     target.status = hit.eliminated ? 'eliminated' : (hit.koed ? 'down' : 'active');
     target.hitFlashTimer = 0.2;
     target.stunTimer = hit.koed ? 0.6 : 0.22;
+    if (hit.eliminated) triggerFinishCinematic({ x: hit.x, y: hit.y, weaponType: 'blast', obstacleKind: kind, attackerId: null, targetId: target.id });
   });
 });
 
