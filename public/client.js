@@ -650,8 +650,8 @@ function drawGroundItem(item) {
 
 const POWERUP_ICONS = { coffee: '☕', tea: '🍵', lemonade: '🍋', pizza: '🍕', burger: '🍔' };
 const POWERUP_NAMES = {
-  coffee: 'Blessing of Swiftness', tea: 'Spirit Herb', lemonade: 'Sunfruit Nectar',
-  pizza: 'Blessing of Power', burger: 'Ancient Feast'
+  coffee: 'Swiftness Blessing', tea: 'Spirit Herb', lemonade: 'Sunfruit',
+  pizza: 'Power Blessing', burger: 'Feast'
 };
 
 function drawPowerupIcon(type, ctx) {
@@ -1681,7 +1681,7 @@ socket.on('crownCollected', ({ playerId, score, kingId, kingChanged }) => {
   const player = state.match.players.get(playerId);
   if (player) particles.spawn(player.renderX, player.renderY, 16, CROWN.color);
   sound.relic();
-  pushKillFeed(`👑 ${player ? player.name : 'Someone'} claimed the Relic of Ascension! (+1000 Honor)`);
+  pushKillFeed(`👑 ${player ? player.name : 'Someone'} claimed the Relic! (+1000 Honor)`);
   applyScoreUpdate(playerId, score, kingId, kingChanged);
 });
 
@@ -1752,7 +1752,7 @@ socket.on('disasterResolved', ({ id, targetId }) => {
 socket.on('bossWarning', ({ warningSec }) => {
   state.match.bossEvent = { phase: 'warning', endsAt: Date.now() + warningSec * 1000 };
   sound.bossWarning();
-  pushKillFeed('🚨 THE ANCIENT GUARDIAN STIRS! Find shelter!');
+  pushKillFeed('🚨 THE GUARDIAN STIRS! Find shelter!');
 });
 
 socket.on('bossResolved', ({ hits }) => {
@@ -1822,9 +1822,9 @@ socket.on('playerLeft', ({ id }) => {
 socket.on('matchEnded', ({ reason, standings, winnerId }) => {
   switchScreen('results');
   const iWon = winnerId === state.selfId;
-  document.getElementById('results-title').textContent = iWon ? 'PROTECTOR OF THE REALMS!' : 'THE TRIAL HAS ENDED';
+  document.getElementById('results-title').textContent = iWon ? 'PROTECTOR!' : 'THE TRIAL HAS ENDED';
   const winner = standings.find(s => s.id === winnerId);
-  const subtitle = winner ? `👑 ${winner.name} is named Protector of the Realms with ${winner.score} Honor!` : 'The trial has concluded.';
+  const subtitle = winner ? `👑 ${winner.name} is named Protector with ${winner.score} Honor!` : 'The trial has concluded.';
   document.getElementById('results-subtitle').textContent = subtitle;
   if (iWon) sound.victory(); else sound.defeat();
 

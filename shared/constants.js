@@ -2,17 +2,17 @@
 // Keeping this shared avoids server/client drifting apart on arena size, combat math, etc.
 
 // The Meeting of Realms is a vertical stack of realms, each separated by a Realm Ward only
-// crossable via a Ley Portal pair: Sacred Grove -> Sky Sanctum -> Hall of the First Trial ->
-// Mystic Garden Terrace -> Elderwood Wilds.
+// crossable via a Ley Portal pair: Sacred Grove -> Sky Sanctum -> Trial Hall ->
+// Mystic Garden -> Elderwood.
 export const ARENA = { width: 1600, height: 3400 };
 export const MAIN_FLOOR_HEIGHT = 1000;
 
 export const ZONES = {
   mainFloor: { yMin: 0, yMax: 1000, label: 'THE SACRED GROVE', tint: 'rgba(90, 200, 140, 0.04)' },
   rooftop: { yMin: 1050, yMax: 1550, label: 'THE SKY SANCTUM', tint: 'rgba(140, 200, 255, 0.06)' },
-  lobby: { yMin: 1600, yMax: 2100, label: 'HALL OF THE FIRST TRIAL', tint: 'rgba(212, 166, 61, 0.05)' },
-  terrace: { yMin: 2150, yMax: 2650, label: 'MYSTIC GARDEN TERRACE', tint: 'rgba(79, 179, 158, 0.06)' },
-  park: { yMin: 2700, yMax: 3400, label: 'THE ELDERWOOD WILDS', tint: 'rgba(60, 180, 90, 0.08)' }
+  lobby: { yMin: 1600, yMax: 2100, label: 'TRIAL HALL', tint: 'rgba(212, 166, 61, 0.05)' },
+  terrace: { yMin: 2150, yMax: 2650, label: 'MYSTIC GARDEN', tint: 'rgba(79, 179, 158, 0.06)' },
+  park: { yMin: 2700, yMax: 3400, label: 'ELDERWOOD', tint: 'rgba(60, 180, 90, 0.08)' }
 };
 
 export const ROOM = { maxPlayers: 7, minToStart: 2, codeLength: 5 };
@@ -33,13 +33,13 @@ export const MATCH = {
 export const CTO_TASKS = [
   { id: 'kos', label: 'Defeat {target} rival champions in single combat', target: 2, durationSec: 30 },
   { id: 'reachRooftop', zone: 'rooftop', label: 'Ascend to the Sky Sanctum', target: 1, durationSec: 20 },
-  { id: 'reachPark', zone: 'park', label: 'Journey to the Elderwood Wilds', target: 1, durationSec: 30 },
+  { id: 'reachPark', zone: 'park', label: 'Journey to Elderwood', target: 1, durationSec: 30 },
   { id: 'surviveNoDamage', label: 'Endure unscathed for {target} seconds', target: 12, durationSec: 25 },
   { id: 'collectPowerups', label: 'Gather {target} Blessings from the realms', target: 2, durationSec: 25 },
   { id: 'dealDamage', label: 'Strike {target} damage upon rival champions', target: 40, durationSec: 25 },
   { id: 'throwItem', label: 'Hurl a relic at a rival champion', target: 1, durationSec: 20 },
   { id: 'throwPlayers', label: 'Grapple and hurl {target} champions', target: 2, durationSec: 35 },
-  { id: 'collectCrown', label: 'Claim the hidden Relic of Ascension', target: 1, durationSec: 30 },
+  { id: 'collectCrown', label: 'Claim the hidden Relic', target: 1, durationSec: 30 },
   { id: 'itemKo', label: 'Defeat a champion with a hurled relic', target: 1, durationSec: 30 },
   { id: 'landHits', label: 'Land {target} strikes upon rival champions', target: 5, durationSec: 30 }
 ];
@@ -207,7 +207,7 @@ export const STAIRCASES = [
   { id: 'lobby-down', x: 770, y: 1605, w: 60, h: 45, targetX: 800, targetY: 1490, arrow: '▲', to: 'SKY' },
   { id: 'lobby-up', x: 770, y: 2050, w: 60, h: 45, targetX: 800, targetY: 2210, arrow: '▼', to: 'GARDEN' },
   { id: 'terrace-down', x: 770, y: 2155, w: 60, h: 45, targetX: 800, targetY: 2040, arrow: '▲', to: 'TRIAL' },
-  { id: 'terrace-up', x: 770, y: 2600, w: 60, h: 45, targetX: 800, targetY: 2760, arrow: '▼', to: 'WILDS' },
+  { id: 'terrace-up', x: 770, y: 2600, w: 60, h: 45, targetX: 800, targetY: 2760, arrow: '▼', to: 'ELDERWOOD' },
   { id: 'park-down', x: 770, y: 2705, w: 60, h: 45, targetX: 800, targetY: 2590, arrow: '▲', to: 'GARDEN' }
 ];
 export const STAIRCASE_TELEPORT_COOLDOWN_SEC = 1.0;
@@ -265,7 +265,7 @@ export const BOSS = {
 // Realm Events: match-wide events that temporarily change how a Trial plays. Only one is ever
 // active at a time, and every one is announced with a reaction window before it takes effect -
 // the same schedule -> warn -> resolve -> reschedule shape already used by Sacred Trials and
-// the Ancient Guardian above. `duration` events set room.activeDisaster for their durationSec;
+// the Guardian above. `duration` events set room.activeDisaster for their durationSec;
 // `oneshot` events (Crystal Resonance) resolve immediately and don't have a durationSec.
 export const DISASTERS = [
   { id: 'volcanicEruption', kind: 'duration', label: 'Volcanic Eruption', warningSec: 4, durationSec: 12 },
@@ -288,14 +288,14 @@ export const SACRED_RAIN = { frictionMultiplier: 0.97 };
 // so a resonance blast can never double-damage someone caught in both radii.
 
 export const AVATARS = [
-  { id: 0, name: 'Ember Champion', color: '#ff6b6b', accessory: 'tie' },
-  { id: 1, name: 'Tide Champion', color: '#4facfe', accessory: 'glasses' },
-  { id: 2, name: 'Verdant Champion', color: '#05c46b', accessory: 'headphones' },
-  { id: 3, name: 'Sunfire Champion', color: '#ffc048', accessory: 'cap' },
-  { id: 4, name: 'Void Champion', color: '#a29bfe', accessory: 'bow' },
-  { id: 5, name: 'Dawn Champion', color: '#ff9f43', accessory: 'scarf' },
-  { id: 6, name: 'Bloom Champion', color: '#fd79a8', accessory: 'glasses' },
-  { id: 7, name: 'Frost Champion', color: '#00d2d3', accessory: 'tie' }
+  { id: 0, name: 'Ember', color: '#ff6b6b', accessory: 'tie' },
+  { id: 1, name: 'Tide', color: '#4facfe', accessory: 'glasses' },
+  { id: 2, name: 'Verdant', color: '#05c46b', accessory: 'headphones' },
+  { id: 3, name: 'Sunfire', color: '#ffc048', accessory: 'cap' },
+  { id: 4, name: 'Void', color: '#a29bfe', accessory: 'bow' },
+  { id: 5, name: 'Dawn', color: '#ff9f43', accessory: 'scarf' },
+  { id: 6, name: 'Bloom', color: '#fd79a8', accessory: 'glasses' },
+  { id: 7, name: 'Frost', color: '#00d2d3', accessory: 'tie' }
 ];
 
 export function clamp(v, min, max) {
