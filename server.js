@@ -11,7 +11,8 @@ import {
   CTO_TASKS, CTO_TASK_GAP_SEC, CTO_TASK_FIRST_DELAY_SEC, GRAB,
   ZONES, BOSS, COVER_OBSTACLES,
   OBSTACLES, ITEM_SPAWNS, TABLE_SPAWNS, TABLE_RESPAWN_SEC, PLAYER_SPAWNS, AVATARS, clamp, normalizeAngleDiff,
-  DESTRUCTIBLE_KINDS, OBSTACLE_RESPAWN_SEC, DEBRIS_BLAST, THROWN_PLAYER_IMPACT_DAMAGE
+  DESTRUCTIBLE_KINDS, OBSTACLE_RESPAWN_SEC, DEBRIS_BLAST, THROWN_PLAYER_IMPACT_DAMAGE,
+  DISASTERS, DISASTER_FIRST_DELAY_SEC, DISASTER_GAP_SEC, SPIRIT_WINDS
 } from './shared/constants.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -62,6 +63,8 @@ class Room {
     this.thrownPlayers = new Map();
     this.bossTimeoutHandle = null;
     this.obstacleStates = new Map();
+    this.activeDisaster = null;
+    this.disasterTimeoutHandle = null;
     this.itemSeq = 0;
     this.projSeq = 0;
     this.powerupSeq = 0;
@@ -284,6 +287,57 @@ function resolveBossStomp(room) {
   scheduleBossEvent(room, BOSS.gapSec);
 }
 
+// --- Realm Events ---
+// Same schedule -> warn -> resolve -> reschedule shape as Sacred Trials and the Ancient
+// Guardian above, so only one Realm Event is ever active and every one gets a reaction window.
+function scheduleDisasterEvent(room, delaySec) {
+  room.disasterTimeoutHandle = setTimeout(() => {
+    if (room.state !== 'playing') return;
+    triggerDisasterWarning(room);
+  }, delaySec * 1000);
+}
+
+function triggerDisasterWarning(room) {
+  const def = DISASTERS[Math.floor(Math.random() * DISASTERS.length)];
+  room.io.to(room.code).emit('disasterWarning', { id: def.id, label: def.label, warningSec: def.warningSec });
+  room.disasterTimeoutHandle = setTimeout(() => {
+    if (room.state !== 'playing') return;
+    resolveDisasterStart(room, def);
+  }, def.warningSec * 1000);
+}
+
+function resolveDisasterStart(room, def) {
+  if (def.kind === 'oneshot') {
+    resolveCrystalResonance(room);
+    scheduleDisasterEvent(room, DISASTER_GAP_SEC);
+    return;
+  }
+
+  const meta = def.id === 'spiritWinds' ? { windAngle: Math.random() * Math.PI * 2 } : {};
+  room.activeDisaster = { id: def.id, endsAt: Date.now() + def.durationSec * 1000, meta };
+  room.io.to(room.code).emit('disasterStarted', { id: def.id, durationSec: def.durationSec, meta });
+
+  room.disasterTimeoutHandle = setTimeout(() => {
+    if (room.state !== 'playing') return;
+    room.activeDisaster = null;
+    room.io.to(room.code).emit('disasterEnded', { id: def.id });
+    scheduleDisasterEvent(room, DISASTER_GAP_SEC);
+  }, def.durationSec * 1000);
+}
+
+function resolveCrystalResonance(room) {
+  // Reuses the destructible-obstacle blast/chain logic directly (DEBRIS_BLAST) rather than
+  // applying a second, separate explosion - avoids double-damaging anyone caught in both radii.
+  const target = OBSTACLES.find(ob => ob.kind === 'partition' && isObstacleSolid(room, ob));
+  if (!target) {
+    room.io.to(room.code).emit('disasterResolved', { id: 'crystalResonance', targetId: null });
+    return;
+  }
+  const cx = target.x + target.w / 2, cy = target.y + target.h / 2;
+  damageObstacle(room, target, 9999, cx, cy);
+  room.io.to(room.code).emit('disasterResolved', { id: 'crystalResonance', targetId: target.id });
+}
+
 function scheduleCtoTask(room, delaySec) {
   setTimeout(() => {
     if (room.state !== 'playing') return;
@@ -498,6 +552,8 @@ function beginPlaying(room) {
   room.currentTask = null;
   if (room.taskTimeoutHandle) { clearTimeout(room.taskTimeoutHandle); room.taskTimeoutHandle = null; }
   if (room.bossTimeoutHandle) { clearTimeout(room.bossTimeoutHandle); room.bossTimeoutHandle = null; }
+  if (room.disasterTimeoutHandle) { clearTimeout(room.disasterTimeoutHandle); room.disasterTimeoutHandle = null; }
+  room.activeDisaster = null;
   ITEM_SPAWNS.forEach(pt => spawnItemAt(room, pt, randomItemType()));
   TABLE_SPAWNS.forEach(pt => spawnItemAt(room, pt, 'table'));
   POWERUP_SPAWNS.forEach(pt => spawnPowerupAt(room, pt, randomPowerupType()));
@@ -516,6 +572,7 @@ function beginPlaying(room) {
   room.tickHandle = setInterval(() => tick(room), 50);
   scheduleCtoTask(room, CTO_TASK_FIRST_DELAY_SEC);
   scheduleBossEvent(room, BOSS.firstDelaySec);
+  scheduleDisasterEvent(room, DISASTER_FIRST_DELAY_SEC);
 }
 
 function tick(room) {
@@ -525,9 +582,17 @@ function tick(room) {
   }
 
   const dt = 0.05;
+  // Spirit Winds: a steady drift added on top of normal motion, not an accelerating force -
+  // that keeps thrown relics/champions from picking up unbounded speed over the event's duration.
+  let windX = 0, windY = 0;
+  if (room.activeDisaster && room.activeDisaster.id === 'spiritWinds') {
+    windX = Math.cos(room.activeDisaster.meta.windAngle) * SPIRIT_WINDS.forceMagnitude;
+    windY = Math.sin(room.activeDisaster.meta.windAngle) * SPIRIT_WINDS.forceMagnitude;
+  }
+
   for (const proj of [...room.projectiles.values()]) {
-    proj.x += proj.vx * dt;
-    proj.y += proj.vy * dt;
+    proj.x += (proj.vx + windX) * dt;
+    proj.y += (proj.vy + windY) * dt;
     proj.traveled += Math.hypot(proj.vx * dt, proj.vy * dt);
 
     let removed = false;
@@ -593,8 +658,8 @@ function tick(room) {
     const thrown = room.players.get(id);
     if (!thrown) { room.thrownPlayers.delete(id); continue; }
 
-    tp.x += tp.vx * dt;
-    tp.y += tp.vy * dt;
+    tp.x += (tp.vx + windX) * dt;
+    tp.y += (tp.vy + windY) * dt;
     tp.traveled += Math.hypot(tp.vx * dt, tp.vy * dt);
 
     let landed = false;
@@ -734,6 +799,11 @@ function endMatch(room, reason) {
     clearTimeout(room.bossTimeoutHandle);
     room.bossTimeoutHandle = null;
   }
+  if (room.disasterTimeoutHandle) {
+    clearTimeout(room.disasterTimeoutHandle);
+    room.disasterTimeoutHandle = null;
+  }
+  room.activeDisaster = null;
   room.currentTask = null;
   // The winner is whoever has the highest score - independent of lives remaining, so a
   // player eliminated early can still win the match on score. Lives/damage only break ties.

@@ -1,7 +1,8 @@
 import {
   ARENA, ROOM, MATCH, PLAYER, COMBAT, ITEM_TYPES, POWERUPS, CROWN,
   DESKS, PARTITIONS, OBSTACLES, PLANTS, STAIRCASES, STAIRCASE_TELEPORT_COOLDOWN_SEC,
-  FLOOR_WALLS, ZONES, ZONE_OBSTACLES, AVATARS, clamp, normalizeAngleDiff, DESTRUCTIBLE_KINDS
+  FLOOR_WALLS, ZONES, ZONE_OBSTACLES, AVATARS, clamp, normalizeAngleDiff, DESTRUCTIBLE_KINDS,
+  VOLCANIC_ERUPTION, SACRED_RAIN, SPIRIT_WINDS
 } from '/shared/constants.js';
 
 const socket = io();
@@ -54,7 +55,8 @@ const state = {
     ctoTask: null,
     thrownPlayers: new Map(),
     bossEvent: null,
-    destroyedObstacles: new Set()
+    destroyedObstacles: new Set(),
+    activeDisaster: null
   },
   shakeAmount: 0,
   lastPunchAt: 0,
@@ -939,6 +941,54 @@ function render() {
 
   drawPlayerArrows(w, h);
   drawBossOverlay(w);
+  drawRealmEventOverlay(w, h);
+}
+
+// Fixed-size seed arrays so rain/wind streaks don't allocate every frame - cheap, capped particle
+// counts per the "no visual clutter, stay performance-friendly" design goal.
+const RAIN_STREAKS = Array.from({ length: 30 }, () => ({ x: Math.random(), y: Math.random(), speed: 0.6 + Math.random() * 0.4 }));
+const WIND_STREAKS = Array.from({ length: 18 }, () => ({ x: Math.random(), y: Math.random(), speed: 0.5 + Math.random() * 0.5 }));
+const ECLIPSE_WISPS = Array.from({ length: 10 }, () => ({ x: Math.random(), y: Math.random(), seed: Math.random() * 10 }));
+
+function drawRealmEventOverlay(w, h) {
+  const disaster = state.match.activeDisaster;
+  if (!disaster) return;
+  const t = performance.now() / 1000;
+
+  if (disaster.id === 'volcanicEruption') {
+    const pulse = 0.12 + Math.sin(t * 3) * 0.05;
+    ctx.fillStyle = `rgba(217, 105, 74, ${pulse})`;
+    ctx.fillRect(0, 0, w, h);
+  } else if (disaster.id === 'arcaneEclipse') {
+    ctx.fillStyle = 'rgba(8, 6, 16, 0.55)';
+    ctx.fillRect(0, 0, w, h);
+    ECLIPSE_WISPS.forEach(wisp => {
+      const flicker = 0.15 + Math.abs(Math.sin(t * 0.8 + wisp.seed)) * 0.25;
+      ctx.save();
+      ctx.shadowColor = '#d4a63d'; ctx.shadowBlur = 8;
+      ctx.fillStyle = `rgba(212, 166, 61, ${flicker})`;
+      ctx.beginPath(); ctx.arc(wisp.x * w, wisp.y * h, 2.5, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    });
+  } else if (disaster.id === 'spiritWinds') {
+    const angle = disaster.meta.windAngle || 0;
+    const dx = Math.cos(angle), dy = Math.sin(angle);
+    ctx.strokeStyle = 'rgba(230, 240, 245, 0.28)'; ctx.lineWidth = 2;
+    WIND_STREAKS.forEach(s => {
+      const prog = (s.x + t * s.speed * 0.4) % 1.2 - 0.1;
+      const sx = prog * w, sy = s.y * h;
+      ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx - dx * 26, sy - dy * 26); ctx.stroke();
+    });
+  } else if (disaster.id === 'sacredRain') {
+    ctx.fillStyle = 'rgba(79, 179, 232, 0.06)';
+    ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = 'rgba(200, 230, 255, 0.35)'; ctx.lineWidth = 1.5;
+    RAIN_STREAKS.forEach(s => {
+      const prog = (s.y + t * s.speed * 0.9) % 1.1 - 0.05;
+      const sx = s.x * w, sy = prog * h;
+      ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx - 4, sy + 16); ctx.stroke();
+    });
+  }
 }
 
 function drawPlayerArrows(w, h) {
@@ -1066,6 +1116,7 @@ function loop(ts) {
     if (leaderboardTimer <= 0) { leaderboardTimer = 0.15; renderLeaderboard(); }
     updateHudTimer();
     updateCtoBanner();
+    updateRealmEventBanner();
   }
 }
 requestAnimationFrame(loop);
@@ -1108,11 +1159,18 @@ function updateArena(dt) {
     if (p.id === state.selfId) {
       if (p.status === 'active' && p.stunTimer <= 0) {
         const mv = getMovementVector();
-        const speed = PLAYER.speed * (Date.now() < p.speedBuffUntil ? p.speedBuffMultiplier : 1);
+        const disaster = state.match.activeDisaster;
+        const disasterSpeedMult = disaster && disaster.id === 'volcanicEruption' ? VOLCANIC_ERUPTION.speedMultiplier : 1;
+        const friction = disaster && disaster.id === 'sacredRain' ? SACRED_RAIN.frictionMultiplier : 0.85;
+        const speed = PLAYER.speed * disasterSpeedMult * (Date.now() < p.speedBuffUntil ? p.speedBuffMultiplier : 1);
         p.vx += mv.x * speed * 10 * dt;
         p.vy += mv.y * speed * 10 * dt;
-        p.vx *= 0.85; p.vy *= 0.85;
+        p.vx *= friction; p.vy *= friction;
         p.x += p.vx * dt; p.y += p.vy * dt;
+        if (disaster && disaster.id === 'spiritWinds') {
+          p.x += Math.cos(disaster.meta.windAngle) * SPIRIT_WINDS.forceMagnitude * dt;
+          p.y += Math.sin(disaster.meta.windAngle) * SPIRIT_WINDS.forceMagnitude * dt;
+        }
 
         p.x = clamp(p.x, PLAYER.radius, ARENA.width - PLAYER.radius);
         p.y = clamp(p.y, PLAYER.radius, ARENA.height - PLAYER.radius);
@@ -1200,6 +1258,21 @@ function updateCtoBanner() {
   const remaining = Math.max(0, state.match.ctoTask.deadlineAt - Date.now()) / 1000;
   document.getElementById('cto-task-label').textContent = state.match.ctoTask.label;
   document.getElementById('cto-task-timer').textContent = `${remaining.toFixed(0)}s`;
+}
+
+const DISASTER_LABELS = {
+  volcanicEruption: 'Volcanic Eruption', arcaneEclipse: 'Arcane Eclipse',
+  spiritWinds: 'Spirit Winds', sacredRain: 'Sacred Rain', crystalResonance: 'Crystal Resonance'
+};
+
+function updateRealmEventBanner() {
+  const el = document.getElementById('realm-event-banner');
+  const disaster = state.match.activeDisaster;
+  if (!disaster) { el.style.display = 'none'; return; }
+  el.style.display = 'flex';
+  const remaining = Math.max(0, disaster.endsAt - Date.now()) / 1000;
+  document.getElementById('realm-event-label').textContent = DISASTER_LABELS[disaster.id] || disaster.id;
+  document.getElementById('realm-event-timer').textContent = `${remaining.toFixed(0)}s`;
 }
 
 function renderLeaderboard() {
@@ -1337,6 +1410,7 @@ socket.on('matchStarted', data => {
   state.match.thrownPlayers.clear();
   state.match.bossEvent = null;
   state.match.destroyedObstacles.clear();
+  state.match.activeDisaster = null;
 
   data.players.forEach(sp => {
     const avatar = AVATARS[sp.avatarId] || AVATARS[0];
@@ -1540,6 +1614,14 @@ function showTaskFlash(label) {
   showTaskFlash.hideTimer = setTimeout(() => el.classList.remove('active'), 2600);
 }
 
+function showRealmEventFlash(label) {
+  const el = document.getElementById('realm-event-flash');
+  document.getElementById('realm-event-flash-text').textContent = label;
+  el.classList.add('active');
+  clearTimeout(showRealmEventFlash.hideTimer);
+  showRealmEventFlash.hideTimer = setTimeout(() => el.classList.remove('active'), 2600);
+}
+
 socket.on('ctoTaskAssigned', ({ id, label, deadlineAt }) => {
   state.match.ctoTask = { id, label, deadlineAt };
   sound.taskAlert();
@@ -1558,6 +1640,34 @@ socket.on('ctoTaskCompleted', ({ playerId, reward, score, kingId, kingChanged })
 socket.on('ctoTaskExpired', () => {
   state.match.ctoTask = null;
   pushKillFeed('⌛ Nobody completed the Sacred Trial in time.');
+});
+
+socket.on('disasterWarning', ({ id, label, warningSec }) => {
+  sound.taskAlert();
+  showRealmEventFlash(`${label} incoming...`);
+  pushKillFeed(`🌩️ REALM EVENT: ${label} is coming!`);
+});
+
+socket.on('disasterStarted', ({ id, durationSec, meta }) => {
+  state.match.activeDisaster = { id, endsAt: Date.now() + durationSec * 1000, meta: meta || {} };
+  pushKillFeed(`🌩️ ${DISASTER_LABELS[id] || id} has begun!`);
+});
+
+socket.on('disasterEnded', ({ id }) => {
+  if (state.match.activeDisaster && state.match.activeDisaster.id === id) state.match.activeDisaster = null;
+  pushKillFeed(`✨ ${DISASTER_LABELS[id] || id} has passed.`);
+});
+
+socket.on('disasterResolved', ({ id, targetId }) => {
+  if (id === 'crystalResonance') {
+    if (!targetId) {
+      pushKillFeed('✨ Crystal Resonance found no Crystal Ward left to shatter.');
+      return;
+    }
+    sound.crash();
+    state.shakeAmount = Math.max(state.shakeAmount, 20);
+    pushKillFeed('💥 Crystal Resonance shatters a Crystal Ward!');
+  }
 });
 
 socket.on('bossWarning', ({ warningSec }) => {

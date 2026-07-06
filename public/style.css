@@ -205,6 +205,27 @@ canvas { display: block; width: 100%; height: 100%; background-color: #120e1c; }
 }
 .task-flash-text { font-size: 24px; font-weight: 900; color: #fff; margin-top: 8px; }
 
+#realm-event-flash {
+  position: absolute; top: 36%; left: 50%; z-index: 26; text-align: center;
+  padding: 22px 44px; pointer-events: none;
+  transform: translate(-50%, -50%) scale(0.85);
+  opacity: 0; transition: opacity 0.3s ease, transform 0.3s ease;
+  border: 1px solid rgba(217, 105, 74, 0.6); box-shadow: 0 0 40px rgba(217, 105, 74, 0.3);
+}
+#realm-event-flash.active { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+.realm-event-flash-label {
+  font-size: 12px; font-weight: 900; letter-spacing: 3px; color: #d9694a; text-transform: uppercase;
+}
+.realm-event-flash-text { font-size: 24px; font-weight: 900; color: #fff; margin-top: 8px; }
+
+#realm-event-banner {
+  position: absolute; top: 140px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 12px; padding: 8px 20px; z-index: 12;
+  pointer-events: none; border: 1px solid rgba(217, 105, 74, 0.5);
+}
+.realm-event-text { font-size: 12px; font-weight: 800; color: #fff; }
+.realm-event-timer { font-size: 12px; font-weight: 900; color: #d9694a; font-family: monospace; }
+
 #controls-hint {
   position: absolute; bottom: 20px; left: 20px; z-index: 20;
   padding: 16px 20px; display: flex; flex-direction: column; gap: 10px;

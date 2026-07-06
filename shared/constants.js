@@ -262,6 +262,31 @@ export const BOSS = {
   knockback: 150
 };
 
+// Realm Events: match-wide events that temporarily change how a Trial plays. Only one is ever
+// active at a time, and every one is announced with a reaction window before it takes effect -
+// the same schedule -> warn -> resolve -> reschedule shape already used by Sacred Trials and
+// the Ancient Guardian above. `duration` events set room.activeDisaster for their durationSec;
+// `oneshot` events (Crystal Resonance) resolve immediately and don't have a durationSec.
+export const DISASTERS = [
+  { id: 'volcanicEruption', kind: 'duration', label: 'Volcanic Eruption', warningSec: 4, durationSec: 12 },
+  { id: 'arcaneEclipse', kind: 'duration', label: 'Arcane Eclipse', warningSec: 4, durationSec: 14 },
+  { id: 'spiritWinds', kind: 'duration', label: 'Spirit Winds', warningSec: 4, durationSec: 12 },
+  { id: 'sacredRain', kind: 'duration', label: 'Sacred Rain', warningSec: 4, durationSec: 14 },
+  { id: 'crystalResonance', kind: 'oneshot', label: 'Crystal Resonance', warningSec: 4 }
+];
+export const DISASTER_FIRST_DELAY_SEC = 30;
+export const DISASTER_GAP_SEC = 45;
+
+// Volcanic Eruption: ash and heat slow every champion's footing.
+export const VOLCANIC_ERUPTION = { speedMultiplier: 0.72 };
+// Arcane Eclipse: purely atmospheric, no gameplay effect - handled entirely client-side.
+// Spirit Winds: a gust in a random direction pushes thrown relics and hurled champions farther.
+export const SPIRIT_WINDS = { forceMagnitude: 340 };
+// Sacred Rain: slick ground - momentum decays much more slowly than normal.
+export const SACRED_RAIN = { frictionMultiplier: 0.97 };
+// Crystal Resonance itself has no separate tuning - it reuses DEBRIS_BLAST via damageObstacle()
+// so a resonance blast can never double-damage someone caught in both radii.
+
 export const AVATARS = [
   { id: 0, name: 'Ember Champion', color: '#ff6b6b', accessory: 'tie' },
   { id: 1, name: 'Tide Champion', color: '#4facfe', accessory: 'glasses' },
