@@ -27,16 +27,20 @@ export const MATCH = {
 
 // CTO Directives: periodic race-to-complete objectives. First player to finish
 // the current task wins the crown-score reward; the task then resets after a gap.
+// Tasks with a `zone` field use generalized "arrive at this area" logic - a player already
+// standing there when the task starts doesn't get free credit; they must actually arrive.
 export const CTO_TASKS = [
-  { id: 'kos', label: 'Land {target} KOs', target: 2, durationSec: 30 },
-  { id: 'reachRooftop', label: 'Reach the Rooftop Lounge', target: 1, durationSec: 20 },
-  { id: 'surviveNoDamage', label: 'Survive {target}s without taking damage', target: 12, durationSec: 25 },
-  { id: 'collectPowerups', label: 'Collect {target} power-ups', target: 2, durationSec: 25 },
-  { id: 'dealDamage', label: 'Deal {target} total damage', target: 40, durationSec: 25 },
-  { id: 'throwItem', label: 'Throw an office item at someone', target: 1, durationSec: 20 },
-  { id: 'throwPlayers', label: 'Grab and throw {target} players', target: 2, durationSec: 35 },
-  { id: 'collectCrown', label: 'Collect the hidden crown', target: 1, durationSec: 30 },
-  { id: 'itemKo', label: 'KO a player with a thrown item', target: 1, durationSec: 30 }
+  { id: 'kos', label: 'Knock out {target} other players', target: 2, durationSec: 30 },
+  { id: 'reachRooftop', zone: 'rooftop', label: 'Get to the Rooftop Lounge', target: 1, durationSec: 20 },
+  { id: 'reachPark', zone: 'park', label: 'Get to the Park', target: 1, durationSec: 30 },
+  { id: 'surviveNoDamage', label: 'Avoid taking damage for {target} seconds', target: 12, durationSec: 25 },
+  { id: 'collectPowerups', label: 'Pick up {target} food or drink power-ups', target: 2, durationSec: 25 },
+  { id: 'dealDamage', label: 'Deal {target} damage to other players', target: 40, durationSec: 25 },
+  { id: 'throwItem', label: 'Pick up and throw any office item', target: 1, durationSec: 20 },
+  { id: 'throwPlayers', label: 'Grab {target} players and throw them', target: 2, durationSec: 35 },
+  { id: 'collectCrown', label: 'Find and collect the hidden golden crown', target: 1, durationSec: 30 },
+  { id: 'itemKo', label: 'Knock out a player by throwing an item at them', target: 1, durationSec: 30 },
+  { id: 'landHits', label: 'Land {target} punches or kicks on other players', target: 5, durationSec: 30 }
 ];
 // Scoring: the match winner is whoever has the highest score, completely independent of
 // lives remaining - even a player who was eliminated early can still win on score.

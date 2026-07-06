@@ -234,24 +234,24 @@ function isInZone(y, zone) {
 function pickCtoTaskDef(room) {
   for (let attempt = 0; attempt < 5; attempt++) {
     const def = CTO_TASKS[Math.floor(Math.random() * CTO_TASKS.length)];
-    if (def.id !== 'reachRooftop') return def;
+    if (!def.zone) return def;
     const activePlayers = room.playerList.filter(p => p.status !== 'eliminated');
-    const allAlreadyThere = activePlayers.length > 0 && activePlayers.every(p => isInZone(p.y, ZONES.rooftop));
+    const allAlreadyThere = activePlayers.length > 0 && activePlayers.every(p => isInZone(p.y, ZONES[def.zone]));
     if (!allAlreadyThere) return def;
   }
-  return CTO_TASKS.find(t => t.id !== 'reachRooftop') || CTO_TASKS[0];
+  return CTO_TASKS.find(t => !t.zone) || CTO_TASKS[0];
 }
 
 function assignCtoTask(room) {
   const def = pickCtoTaskDef(room);
   const now = Date.now();
   const deadlineAt = now + def.durationSec * 1000;
-  room.currentTask = { id: def.id, target: def.target, startedAt: now, deadlineAt };
+  room.currentTask = { id: def.id, zone: def.zone || null, target: def.target, startedAt: now, deadlineAt };
 
   for (const p of room.players.values()) {
     p.taskProgress = 0;
     p.taskDone = false;
-    if (def.id === 'reachRooftop') p.wasOnRooftopAtTaskStart = isInZone(p.y, ZONES.rooftop);
+    if (def.zone) p.wasInZoneAtTaskStart = isInZone(p.y, ZONES[def.zone]);
   }
 
   room.io.to(room.code).emit('ctoTaskAssigned', {
@@ -420,7 +420,7 @@ function beginPlaying(room) {
       lastPunch: 0, lastKick: 0, holding: null, damageDealt: 0, damageTaken: 0, status: 'active',
       invulnerableUntil: Date.now() + MATCH.respawnInvulnSec * 1000,
       speedBuffUntil: 0, speedBuffMultiplier: 1, damageBuffUntil: 0, damageBuffMultiplier: 1,
-      score: 0, taskProgress: 0, taskDone: false, lastDamagedAt: 0, wasOnRooftopAtTaskStart: false,
+      score: 0, taskProgress: 0, taskDone: false, lastDamagedAt: 0, wasInZoneAtTaskStart: false,
       carrying: null, carriedBy: null, lastGrab: 0, grabbedAt: 0
     });
   });
@@ -619,17 +619,18 @@ function tick(room) {
   }
 
   if (room.currentTask) {
-    if (room.currentTask.id === 'reachRooftop') {
+    if (room.currentTask.zone) {
+      const zone = ZONES[room.currentTask.zone];
       for (const player of room.players.values()) {
         if (player.status !== 'active') continue;
-        const onRoof = isInZone(player.y, ZONES.rooftop);
-        if (player.wasOnRooftopAtTaskStart) {
-          // Excluded for starting on the rooftop already - but once they actually leave,
+        const inZone = isInZone(player.y, zone);
+        if (player.wasInZoneAtTaskStart) {
+          // Excluded for starting there already - but once they actually leave,
           // a later genuine arrival should count.
-          if (!onRoof) player.wasOnRooftopAtTaskStart = false;
+          if (!inZone) player.wasInZoneAtTaskStart = false;
           continue;
         }
-        if (onRoof) {
+        if (inZone) {
           completeCtoTask(room, player);
           break;
         }
@@ -693,7 +694,7 @@ function joinPlayerToRoom(room, socket, name, avatarId, isHost) {
     lastPunch: 0, lastKick: 0, invulnerableUntil: 0, holding: null,
     damageDealt: 0, damageTaken: 0,
     speedBuffUntil: 0, speedBuffMultiplier: 1, damageBuffUntil: 0, damageBuffMultiplier: 1,
-    score: 0, taskProgress: 0, taskDone: false, lastDamagedAt: 0, wasOnRooftopAtTaskStart: false,
+    score: 0, taskProgress: 0, taskDone: false, lastDamagedAt: 0, wasInZoneAtTaskStart: false,
       carrying: null, carriedBy: null, lastGrab: 0, grabbedAt: 0
   };
 
@@ -839,6 +840,11 @@ io.on('connection', socket => {
     }
 
     room.io.to(room.code).emit('attackResult', { attackerId: attacker.id, type, angle: attacker.angle, x: attacker.x, y: attacker.y, hits });
+
+    if (hits.length > 0 && room.currentTask && room.currentTask.id === 'landHits') {
+      attacker.taskProgress = (attacker.taskProgress || 0) + hits.length;
+      if (attacker.taskProgress >= room.currentTask.target) completeCtoTask(room, attacker);
+    }
   });
 
   socket.on('pickupItem', ({ itemId } = {}) => {

@@ -863,7 +863,54 @@ function render() {
 
   ctx.restore();
 
+  drawPlayerArrows(w, h);
   drawBossOverlay(w);
+}
+
+function drawPlayerArrows(w, h) {
+  const me = state.match.players.get(state.selfId);
+  if (!me) return;
+
+  const margin = 46;
+  const topMargin = margin + 60; // stay clear of the HUD bar
+  const halfW = w / 2 - margin;
+  const halfH = h / 2 - topMargin;
+
+  for (const p of state.match.players.values()) {
+    if (p.id === me.id || p.status === 'eliminated') continue;
+
+    const screenX = p.renderX - camera.x + w / 2;
+    const screenY = p.renderY - camera.y + h / 2;
+    const onScreen = screenX > margin && screenX < w - margin && screenY > topMargin && screenY < h - margin;
+    if (onScreen) continue;
+
+    const dx = screenX - w / 2;
+    const dy = screenY - h / 2;
+    const scale = Math.min(
+      dx !== 0 ? halfW / Math.abs(dx) : Infinity,
+      dy !== 0 ? halfH / Math.abs(dy) : Infinity
+    );
+    const ax = w / 2 + dx * scale;
+    const ay = h / 2 + dy * scale;
+    const angle = Math.atan2(dy, dx);
+    const avatar = AVATARS[p.avatarId] || AVATARS[0];
+
+    ctx.save();
+    ctx.translate(ax, ay);
+    ctx.rotate(angle);
+    ctx.fillStyle = avatar.color;
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(15, 0); ctx.lineTo(-9, -9); ctx.lineTo(-9, 9); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.restore();
+
+    ctx.save();
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 10px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(p.name, ax - Math.cos(angle) * 20, ay - Math.sin(angle) * 20);
+    ctx.restore();
+  }
 }
 
 function drawBossOverlay(canvasWidth) {
