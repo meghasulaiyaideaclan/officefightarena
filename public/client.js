@@ -1,7 +1,7 @@
 import {
   ARENA, ROOM, MATCH, PLAYER, COMBAT, ITEM_TYPES, POWERUPS, CROWN,
   DESKS, PARTITIONS, OBSTACLES, PLANTS, STAIRCASES, STAIRCASE_TELEPORT_COOLDOWN_SEC,
-  FLOOR_WALLS, ZONES, ZONE_OBSTACLES, AVATARS, clamp, normalizeAngleDiff
+  FLOOR_WALLS, ZONES, ZONE_OBSTACLES, AVATARS, clamp, normalizeAngleDiff, DESTRUCTIBLE_KINDS
 } from '/shared/constants.js';
 
 const socket = io();
@@ -53,7 +53,8 @@ const state = {
     kingId: null,
     ctoTask: null,
     thrownPlayers: new Map(),
-    bossEvent: null
+    bossEvent: null,
+    destroyedObstacles: new Set()
   },
   shakeAmount: 0,
   lastPunchAt: 0,
@@ -105,6 +106,7 @@ class SoundManager {
     [0, 220, 440].forEach(delay => setTimeout(() => this.tone(110, 0.3, 'sawtooth', 0.22, 180), delay));
   }
   bossStomp() { this.tone(70, 0.4, 'square', 0.25, 140); }
+  crash() { this.tone(120, 0.3, 'sawtooth', 0.22, 90); }
 }
 const sound = new SoundManager();
 window.addEventListener('pointerdown', () => { sound.init(); sound.resume(); }, { once: true });
@@ -303,17 +305,18 @@ function resizeCanvas() {
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
 
+// An Ancient Pillar, seen from above: a weathered stone slab carved with a glowing rune.
 function drawDesk(d) {
   ctx.save();
   ctx.fillStyle = 'rgba(0,0,0,0.25)';
   ctx.beginPath(); ctx.roundRect(d.x + 8, d.y + 12, d.w, d.h, 10); ctx.fill();
 
-  ctx.fillStyle = '#5c4433';
-  ctx.strokeStyle = '#3d2c20';
+  ctx.fillStyle = '#6d6a60';
+  ctx.strokeStyle = '#46433c';
   ctx.lineWidth = 2.5;
   ctx.beginPath(); ctx.roundRect(d.x, d.y, d.w, d.h, 10); ctx.fill(); ctx.stroke();
 
-  ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+  ctx.strokeStyle = 'rgba(0,0,0,0.18)';
   ctx.lineWidth = 1;
   for (let i = 1; i < 3; i++) {
     ctx.beginPath();
@@ -323,45 +326,44 @@ function drawDesk(d) {
   }
 
   const cx = d.x + d.w / 2, cy = d.y + d.h / 2;
-  const lw = 34, lh = 22;
-  const laptopX = cx - lw / 2, laptopY = cy - lh / 2 - 4;
 
-  ctx.fillStyle = '#cfd3d8'; ctx.strokeStyle = '#8a8f96'; ctx.lineWidth = 1.5;
-  ctx.beginPath(); ctx.roundRect(laptopX, laptopY + lh - 5, lw, 6, 2); ctx.fill(); ctx.stroke();
+  ctx.save();
+  ctx.shadowColor = '#d4a63d'; ctx.shadowBlur = 12;
+  ctx.strokeStyle = 'rgba(212,166,61,0.85)'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(cx, cy, 16, 0, Math.PI * 2); ctx.stroke();
+  ctx.fillStyle = 'rgba(212,166,61,0.22)';
+  ctx.beginPath(); ctx.arc(cx, cy, 16, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,224,150,0.9)'; ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - 10); ctx.lineTo(cx + 8, cy + 5); ctx.lineTo(cx - 8, cy + 5); ctx.closePath();
+  ctx.stroke();
+  ctx.restore();
 
-  ctx.fillStyle = '#1b1f24'; ctx.strokeStyle = '#8a8f96';
-  ctx.beginPath(); ctx.roundRect(laptopX + 2, laptopY - 12, lw - 4, 14, 2); ctx.fill(); ctx.stroke();
-  ctx.fillStyle = 'rgba(0, 210, 255, 0.55)';
-  ctx.fillRect(laptopX + 4, laptopY - 10, lw - 8, 10);
-
-  ctx.fillStyle = '#2d3436'; ctx.strokeStyle = '#171a1c'; ctx.lineWidth = 1.2;
-  ctx.beginPath(); ctx.roundRect(cx - 16, cy + lh / 2 + 2, 32, 10, 2); ctx.fill(); ctx.stroke();
-  ctx.fillStyle = '#57606a';
-  for (let r = 0; r < 2; r++) {
-    for (let c = 0; c < 7; c++) ctx.fillRect(cx - 14 + c * 4.4, cy + lh / 2 + 4 + r * 4, 2.6, 2.6);
-  }
-
-  ctx.fillStyle = '#e8e2d5'; ctx.strokeStyle = '#b0a692'; ctx.lineWidth = 1.2;
-  ctx.beginPath(); ctx.arc(d.x + d.w - 14, d.y + 14, 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-  ctx.beginPath(); ctx.arc(d.x + d.w - 8, d.y + 14, 3, -Math.PI / 2, Math.PI / 2); ctx.stroke();
+  ctx.fillStyle = 'rgba(0,0,0,0.15)';
+  [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([sx, sy]) => {
+    ctx.beginPath(); ctx.arc(cx + sx * (d.w / 2 - 12), cy + sy * (d.h / 2 - 12), 4, 0, Math.PI * 2); ctx.fill();
+  });
 
   ctx.restore();
 }
 
+// A Crystal Ward: a translucent glowing shard that blocks the way until it's shattered.
 function drawPartition(p) {
   ctx.save();
-  ctx.fillStyle = 'rgba(0,0,0,0.22)';
+  ctx.fillStyle = 'rgba(0,0,0,0.18)';
   ctx.fillRect(p.x + 4, p.y + 5, p.w, p.h);
 
   const grad = ctx.createLinearGradient(p.x, p.y, p.x + p.w, p.y);
-  grad.addColorStop(0, '#8b93a8');
-  grad.addColorStop(1, '#6b7386');
+  grad.addColorStop(0, 'rgba(95, 179, 163, 0.85)');
+  grad.addColorStop(1, 'rgba(63, 155, 141, 0.85)');
   ctx.fillStyle = grad;
-  ctx.strokeStyle = '#4c5266';
+  ctx.strokeStyle = 'rgba(190, 240, 225, 0.9)';
   ctx.lineWidth = 2;
+  ctx.shadowColor = '#4fb39e'; ctx.shadowBlur = 10;
   ctx.beginPath(); ctx.roundRect(p.x, p.y, p.w, p.h, 4); ctx.fill(); ctx.stroke();
+  ctx.shadowBlur = 0;
 
-  ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
   ctx.lineWidth = 1;
   for (let i = 1; i < 5; i++) {
     ctx.beginPath();
@@ -373,11 +375,12 @@ function drawPartition(p) {
 }
 
 const COWORKER_DESK_INDICES = [0, 1, 4, 5];
+// Pilgrim spirits keeping quiet vigil beside the pillars - decorative only, no collision.
 const COWORKERS = COWORKER_DESK_INDICES.map((deskIdx, i) => ({
   desk: DESKS[deskIdx],
   seed: i * 1.7,
   skinTone: ['#e8b98a', '#c68863', '#8d5a3c', '#f0c9a0'][i % 4],
-  shirt: ['#5c6bc0', '#26a69a', '#8d6e63', '#78909c'][i % 4]
+  shirt: ['#4a3f78', '#2f7a6b', '#7a4a3c', '#5a5468'][i % 4]
 }));
 
 function drawCoworker(npc) {
@@ -417,20 +420,23 @@ function drawPlant(pt) {
   ctx.restore();
 }
 
+// A Ley Portal - a glowing gateway between realms.
 function drawStaircase(s) {
   ctx.save();
   const cx = s.x + s.w / 2, cy = s.y + s.h / 2;
   ctx.translate(cx, cy);
-  ctx.fillStyle = 'rgba(0,242,254,0.15)';
-  ctx.strokeStyle = 'rgba(0,242,254,0.6)'; ctx.lineWidth = 2;
+  ctx.fillStyle = 'rgba(212,166,61,0.15)';
+  ctx.strokeStyle = 'rgba(212,166,61,0.65)'; ctx.lineWidth = 2;
+  ctx.shadowColor = '#d4a63d'; ctx.shadowBlur = 10;
   ctx.beginPath(); ctx.roundRect(-s.w / 2, -s.h / 2, s.w, s.h, 8); ctx.fill(); ctx.stroke();
+  ctx.shadowBlur = 0;
 
-  ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 2;
+  ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.lineWidth = 2;
   for (let i = -2; i <= 2; i++) {
     ctx.beginPath(); ctx.moveTo(-s.w / 2 + 4, i * 7); ctx.lineTo(s.w / 2 - 4, i * 7); ctx.stroke();
   }
 
-  ctx.fillStyle = '#00f2fe';
+  ctx.fillStyle = '#ffdb85';
   ctx.font = 'bold 16px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillText(s.arrow, 0, -s.h / 2 - 14);
   ctx.font = 'bold 9px system-ui';
@@ -438,17 +444,42 @@ function drawStaircase(s) {
   ctx.restore();
 }
 
+// A Realm Ward - a ley-line barrier only crossable at a Ley Portal.
 function drawFloorWall(w) {
   ctx.save();
-  ctx.fillStyle = '#2b2438';
+  ctx.fillStyle = '#211d2c';
   ctx.fillRect(w.x, w.y, w.w, w.h);
-  ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 2;
+  ctx.strokeStyle = 'rgba(255,255,255,0.05)'; ctx.lineWidth = 2;
   for (let x = w.x - w.h; x < w.x + w.w; x += 30) {
     ctx.beginPath(); ctx.moveTo(x, w.y); ctx.lineTo(x + w.h, w.y + w.h); ctx.stroke();
   }
-  ctx.strokeStyle = 'rgba(122,79,240,0.5)'; ctx.lineWidth = 3;
+  ctx.strokeStyle = 'rgba(212,166,61,0.45)'; ctx.lineWidth = 3;
   ctx.beginPath(); ctx.moveTo(w.x, w.y); ctx.lineTo(w.x + w.w, w.y); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(w.x, w.y + w.h); ctx.lineTo(w.x + w.w, w.y + w.h); ctx.stroke();
+  ctx.restore();
+}
+
+// Lightweight "destroyed" state: a flattened rubble sprite, not simulated debris pieces.
+function drawRubble(ob) {
+  ctx.save();
+  const cx = ob.x + ob.w / 2, cy = ob.y + ob.h / 2;
+  const color = (DESTRUCTIBLE_KINDS[ob.kind] || {}).color || '#6b5540';
+  ctx.fillStyle = 'rgba(0,0,0,0.2)';
+  ctx.beginPath(); ctx.ellipse(cx, cy + 4, ob.w / 2, ob.h / 3, 0, 0, Math.PI * 2); ctx.fill();
+
+  const seed = (ob.x * 31 + ob.y * 17) % 100;
+  ctx.fillStyle = color; ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 1.5;
+  for (let i = 0; i < 5; i++) {
+    const r = ((seed + i * 37) % 100) / 100;
+    const px = ob.x + r * ob.w;
+    const py = ob.y + ((seed + i * 53) % 100) / 100 * ob.h;
+    const rot = ((seed + i * 71) % 360) * Math.PI / 180;
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.rotate(rot);
+    ctx.beginPath(); ctx.rect(-10 - r * 8, -4, 20 + r * 10, 8); ctx.fill(); ctx.stroke();
+    ctx.restore();
+  }
   ctx.restore();
 }
 
@@ -457,45 +488,58 @@ function drawZoneObstacle(o) {
   const cx = o.x + o.w / 2, cy = o.y + o.h / 2;
 
   if (o.kind === 'reception') {
+    // The Convergence Altar: where every champion is marked at the start of the trial.
     ctx.fillStyle = 'rgba(0,0,0,0.25)';
     ctx.beginPath(); ctx.roundRect(o.x + 6, o.y + 10, o.w, o.h, 10); ctx.fill();
-    ctx.fillStyle = '#4a3a2a'; ctx.strokeStyle = '#2d2318'; ctx.lineWidth = 3;
+    ctx.fillStyle = '#5a4d2e'; ctx.strokeStyle = '#3a3020'; ctx.lineWidth = 3;
     ctx.beginPath(); ctx.roundRect(o.x, o.y, o.w, o.h, 10); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = '#6b5540';
+    ctx.fillStyle = '#7a6a40';
     ctx.fillRect(o.x + 8, o.y + o.h - 14, o.w - 16, 8);
-    ctx.fillStyle = '#1b1f24'; ctx.strokeStyle = '#8a8f96'; ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.roundRect(cx - 16, o.y + 10, 32, 20, 3); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = 'rgba(0,210,255,0.5)'; ctx.fillRect(cx - 13, o.y + 13, 26, 14);
-    ctx.fillStyle = '#fff'; ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'center';
-    ctx.fillText('WELCOME', cx, o.y - 8);
+    ctx.save();
+    ctx.shadowColor = '#d4a63d'; ctx.shadowBlur = 14;
+    ctx.strokeStyle = 'rgba(212,166,61,0.9)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(cx, o.y + 20, 15, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = 'rgba(212,166,61,0.25)';
+    ctx.beginPath(); ctx.arc(cx, o.y + 20, 15, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    ctx.fillStyle = '#e8d9a8'; ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText('CONVERGENCE', cx, o.y - 8);
   } else if (o.kind === 'bench') {
+    // A Pilgrim's Bench, worn smooth by champions awaiting their trial.
     ctx.fillStyle = 'rgba(0,0,0,0.2)';
     ctx.beginPath(); ctx.roundRect(o.x + 4, o.y + 8, o.w, o.h, 10); ctx.fill();
-    ctx.fillStyle = '#5c4433'; ctx.strokeStyle = '#3d2c20'; ctx.lineWidth = 2.5;
+    ctx.fillStyle = '#8f897a'; ctx.strokeStyle = '#5c584c'; ctx.lineWidth = 2.5;
     ctx.beginPath(); ctx.roundRect(o.x, o.y, o.w, o.h, 10); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = '#7a5b42';
+    ctx.fillStyle = '#a49e8e';
     for (let i = 0; i < 3; i++) ctx.fillRect(o.x + 8 + i * (o.w - 16) / 3, o.y + 6, (o.w - 16) / 3 - 4, o.h - 12);
   } else if (o.kind === 'bistro') {
+    // An Offering Fountain, its still water reflecting the garden light.
     ctx.fillStyle = 'rgba(0,0,0,0.2)';
     ctx.beginPath(); ctx.arc(cx, cy + 6, o.w / 2, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#8b5e3c'; ctx.strokeStyle = '#5c3d24'; ctx.lineWidth = 2.5;
+    ctx.fillStyle = '#6b5d43'; ctx.strokeStyle = '#443a29'; ctx.lineWidth = 2.5;
     ctx.beginPath(); ctx.arc(cx, cy, o.w / 2, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    ctx.save();
+    ctx.shadowColor = '#7bc4b0'; ctx.shadowBlur = 10;
+    ctx.fillStyle = 'rgba(123,196,176,0.55)';
     ctx.beginPath(); ctx.arc(cx, cy, o.w / 2 - 8, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#3d2c20';
+    ctx.restore();
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.beginPath(); ctx.arc(cx - 6, cy - 6, 5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#443a29';
     [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([dx, dy]) => {
       ctx.beginPath(); ctx.arc(cx + dx * (o.w / 2 + 10), cy + dy * (o.w / 2 + 10), 8, 0, Math.PI * 2); ctx.fill();
     });
   } else if (o.kind === 'tree') {
+    // An Ancient Tree of the Elderwood - permanent cover, older than the Convergence itself.
     ctx.fillStyle = 'rgba(0,0,0,0.22)';
     ctx.beginPath(); ctx.ellipse(cx, cy + 30, 34, 12, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#6b4a30';
+    ctx.fillStyle = '#5c4128';
     ctx.fillRect(cx - 6, cy - 4, 12, 34);
-    ctx.fillStyle = '#2f7a34';
+    ctx.fillStyle = '#2a6b52';
     [[-16, -10], [16, -10], [0, -26], [-10, 6], [10, 6]].forEach(([dx, dy]) => {
       ctx.beginPath(); ctx.arc(cx + dx, cy + dy, 24, 0, Math.PI * 2); ctx.fill();
     });
-    ctx.fillStyle = '#3f9142';
+    ctx.fillStyle = '#357d61';
     ctx.beginPath(); ctx.arc(cx, cy - 8, 26, 0, Math.PI * 2); ctx.fill();
   }
   ctx.restore();
@@ -559,10 +603,10 @@ function drawGroundItem(item) {
 }
 
 const POWERUP_ICONS = { coffee: '☕', tea: '🍵', lemonade: '🍋', pizza: '🍕', burger: '🍔' };
-
-function aOrAn(word) {
-  return /^[aeiou]/i.test(word) ? 'an' : 'a';
-}
+const POWERUP_NAMES = {
+  coffee: 'Blessing of Swiftness', tea: 'Spirit Herb', lemonade: 'Sunfruit Nectar',
+  pizza: 'Blessing of Power', burger: 'Ancient Feast'
+};
 
 function drawPowerupIcon(type, ctx) {
   const spec = POWERUPS[type];
@@ -826,13 +870,13 @@ function render() {
 
   ctx.translate(tx + sx, ty + sy);
 
-  ctx.fillStyle = '#1b1429';
+  ctx.fillStyle = '#151221';
   ctx.fillRect(0, 0, ARENA.width, ARENA.height);
-  ctx.strokeStyle = '#251c36'; ctx.lineWidth = 2;
+  ctx.strokeStyle = '#211f31'; ctx.lineWidth = 2;
   const grid = 80;
   for (let x = 0; x <= ARENA.width; x += grid) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, ARENA.height); ctx.stroke(); }
   for (let y = 0; y <= ARENA.height; y += grid) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(ARENA.width, y); ctx.stroke(); }
-  ctx.strokeStyle = 'rgba(122, 79, 240, 0.4)'; ctx.lineWidth = 10;
+  ctx.strokeStyle = 'rgba(212, 166, 61, 0.35)'; ctx.lineWidth = 10;
   ctx.strokeRect(0, 0, ARENA.width, ARENA.height);
 
   Object.values(ZONES).forEach(z => {
@@ -850,9 +894,9 @@ function render() {
   STAIRCASES.forEach(drawStaircase);
 
   PLANTS.forEach(drawPlant);
-  ZONE_OBSTACLES.forEach(drawZoneObstacle);
-  DESKS.forEach(drawDesk);
-  PARTITIONS.forEach(drawPartition);
+  ZONE_OBSTACLES.forEach(o => state.match.destroyedObstacles.has(o.id) ? drawRubble(o) : drawZoneObstacle(o));
+  DESKS.forEach(d => state.match.destroyedObstacles.has(d.id) ? drawRubble(d) : drawDesk(d));
+  PARTITIONS.forEach(p => state.match.destroyedObstacles.has(p.id) ? drawRubble(p) : drawPartition(p));
   COWORKERS.forEach(drawCoworker);
   if (state.match.crown) drawGroundCrown(state.match.crown);
   state.match.powerups.forEach(drawGroundPowerup);
@@ -1033,7 +1077,7 @@ function updateArena(dt) {
 
         p.x = clamp(p.x, PLAYER.radius, ARENA.width - PLAYER.radius);
         p.y = clamp(p.y, PLAYER.radius, ARENA.height - PLAYER.radius);
-        for (const d of OBSTACLES) resolveDeskCollision(p, d);
+        for (const d of OBSTACLES) { if (!state.match.destroyedObstacles.has(d.id)) resolveDeskCollision(p, d); }
 
         if (performance.now() - state.lastTeleportAt > STAIRCASE_TELEPORT_COOLDOWN_SEC * 1000) {
           for (const s of STAIRCASES) {
@@ -1124,7 +1168,7 @@ function renderLeaderboard() {
     .sort((a, b) => (b.score || 0) - (a.score || 0));
   const king = state.match.kingId ? state.match.players.get(state.match.kingId) : null;
   const kingBanner = king ? `<div class="leaderboard-king">👑 Leading: ${escapeHtml(king.name)}</div>` : '';
-  leaderboardEl.innerHTML = `<span class="hud-label">STANDINGS (SCORE)</span>` + kingBanner + rows.map(p => {
+  leaderboardEl.innerHTML = `<span class="hud-label">HALL OF HONOR</span>` + kingBanner + rows.map(p => {
     const avatar = AVATARS[p.avatarId] || AVATARS[0];
     const status = p.status === 'eliminated' ? ' (out)' : '';
     const crownPrefix = p.id === state.match.kingId ? '👑 ' : '';
@@ -1174,10 +1218,10 @@ function applyHitToPlayer(target, hit) {
 
   const attackerName = (state.match.players.get(hit.attackerId) || {}).name || 'Someone';
   if (hit.eliminated) {
-    pushKillFeed(`💥 ${attackerName} eliminated ${target.name}!`);
+    pushKillFeed(`💥 ${attackerName} defeated ${target.name}!`);
     sound.ko();
   } else if (hit.koed) {
-    pushKillFeed(`🤕 ${attackerName} knocked out ${target.name}!`);
+    pushKillFeed(`🤕 ${attackerName} struck down ${target.name}!`);
     sound.ko();
   } else {
     sound.hit();
@@ -1253,6 +1297,7 @@ socket.on('matchStarted', data => {
   state.match.ctoTask = null;
   state.match.thrownPlayers.clear();
   state.match.bossEvent = null;
+  state.match.destroyedObstacles.clear();
 
   data.players.forEach(sp => {
     const avatar = AVATARS[sp.avatarId] || AVATARS[0];
@@ -1346,7 +1391,7 @@ socket.on('playerGrabbed', ({ carrierId, targetId }) => {
     target.status = 'grabbed';
   }
   sound.pickup();
-  pushKillFeed(`🤼 ${carrier ? carrier.name : 'Someone'} grabbed ${target ? target.name : 'someone'}!`);
+  pushKillFeed(`🤼 ${carrier ? carrier.name : 'Someone'} grappled ${target ? target.name : 'someone'}!`);
 });
 
 socket.on('playerThrown', ({ carrierId, targetId, x, y, angle, score, kingId, kingChanged }) => {
@@ -1359,7 +1404,7 @@ socket.on('playerThrown', ({ carrierId, targetId, x, y, angle, score, kingId, ki
     target.x = x; target.y = y; target.renderX = x; target.renderY = y; target.angle = angle;
   }
   sound.throwSfx();
-  pushKillFeed(`🤾 ${carrier ? carrier.name : 'Someone'} threw ${target ? target.name : 'someone'}!`);
+  pushKillFeed(`🤾 ${carrier ? carrier.name : 'Someone'} hurled ${target ? target.name : 'someone'}!`);
   state.match.thrownPlayers.set(targetId, { x, y, renderX: x, renderY: y });
   applyScoreUpdate(carrierId, score, kingId, kingChanged);
 });
@@ -1381,8 +1426,8 @@ socket.on('playerLanded', ({ id, x, y, newHp, newLives, koed, eliminated, hit })
     target.stunTimer = 0.4;
     target.invulnUntil = Date.now() + 600;
     particles.spawn(x, y, koed ? 16 : 8, '#ff0844');
-    if (eliminated) pushKillFeed(`💥 ${target.name} was eliminated on landing!`);
-    else if (koed) pushKillFeed(`🤕 ${target.name} was knocked out on landing!`);
+    if (eliminated) pushKillFeed(`💥 ${target.name} was defeated on landing!`);
+    else if (koed) pushKillFeed(`🤕 ${target.name} was struck down on landing!`);
     if (target.id === state.selfId) { state.shakeAmount = 14; triggerDamageFlash(); }
   }
   if (hit) {
@@ -1417,7 +1462,7 @@ function applyScoreUpdate(playerId, score, kingId, kingChanged) {
   if (kingChanged) {
     state.match.kingId = kingId;
     const king = state.match.players.get(kingId);
-    pushKillFeed(`👑 ${king ? king.name : 'Someone'} is the new King of the Clan!`);
+    pushKillFeed(`👑 ${king ? king.name : 'Someone'} is the new Ascendant!`);
     sound.victory();
   }
 }
@@ -1431,7 +1476,7 @@ socket.on('powerupCollected', ({ id, type, playerId, newHp, buff, buffDurationSe
   if (buff === 'damage') { player.damageBuffUntil = Date.now() + buffDurationSec * 1000; }
   sound.pickup();
   particles.spawn(player.renderX, player.renderY, 10, POWERUPS[type].color);
-  pushKillFeed(`${POWERUP_ICONS[type] || ''} ${player.name} grabbed ${aOrAn(type)} ${type}! +${POWERUPS[type].heal} HP`);
+  pushKillFeed(`${POWERUP_ICONS[type] || ''} ${player.name} gathered ${POWERUP_NAMES[type] || type}! +${POWERUPS[type].heal} HP`);
   applyScoreUpdate(playerId, score, kingId, kingChanged);
 });
 
@@ -1444,7 +1489,7 @@ socket.on('crownCollected', ({ playerId, score, kingId, kingChanged }) => {
   const player = state.match.players.get(playerId);
   if (player) particles.spawn(player.renderX, player.renderY, 16, CROWN.color);
   sound.pickup();
-  pushKillFeed(`👑 ${player ? player.name : 'Someone'} grabbed the crown! (+1000 score)`);
+  pushKillFeed(`👑 ${player ? player.name : 'Someone'} claimed the Relic of Ascension! (+1000 Honor)`);
   applyScoreUpdate(playerId, score, kingId, kingChanged);
 });
 
@@ -1460,26 +1505,26 @@ socket.on('ctoTaskAssigned', ({ id, label, deadlineAt }) => {
   state.match.ctoTask = { id, label, deadlineAt };
   sound.taskAlert();
   showTaskFlash(label);
-  pushKillFeed(`📋 TASK: ${label}!`);
+  pushKillFeed(`⚔️ SACRED TRIAL: ${label}!`);
 });
 
 socket.on('ctoTaskCompleted', ({ playerId, reward, score, kingId, kingChanged }) => {
   state.match.ctoTask = null;
   const player = state.match.players.get(playerId);
-  pushKillFeed(`✅ ${player ? player.name : 'Someone'} completed the task! +${reward} score`);
+  pushKillFeed(`✅ ${player ? player.name : 'Someone'} completed the Sacred Trial! +${reward} Honor`);
   if (!kingChanged) sound.pickup();
   applyScoreUpdate(playerId, score, kingId, kingChanged);
 });
 
 socket.on('ctoTaskExpired', () => {
   state.match.ctoTask = null;
-  pushKillFeed('⌛ Nobody completed the task in time.');
+  pushKillFeed('⌛ Nobody completed the Sacred Trial in time.');
 });
 
 socket.on('bossWarning', ({ warningSec }) => {
   state.match.bossEvent = { phase: 'warning', endsAt: Date.now() + warningSec * 1000 };
   sound.bossWarning();
-  pushKillFeed('🚨 THE BOSS IS COMING! Hide under cover!');
+  pushKillFeed('🚨 THE ANCIENT GUARDIAN STIRS! Find shelter!');
 });
 
 socket.on('bossResolved', ({ hits }) => {
@@ -1498,10 +1543,35 @@ socket.on('bossResolved', ({ hits }) => {
     target.stunTimer = hit.koed ? 0.6 : 0.22;
     particles.spawn(target.renderX, target.renderY, hit.koed ? 18 : 8, '#ff0844');
     pushKillFeed(hit.eliminated
-      ? `💥 ${target.name} didn't take cover and was eliminated!`
-      : `💥 ${target.name} didn't take cover and got flattened!`);
+      ? `💥 ${target.name} found no shelter and was defeated!`
+      : `💥 ${target.name} found no shelter and was struck down!`);
   });
-  if (hits.length === 0) pushKillFeed('😮‍💨 Everyone made it to cover in time!');
+  if (hits.length === 0) pushKillFeed('😮‍💨 Every champion found shelter in time!');
+});
+
+socket.on('obstacleDestroyed', ({ id, x, y, w, h, kind, blastHits }) => {
+  state.match.destroyedObstacles.add(id);
+  sound.crash();
+  state.shakeAmount = Math.max(state.shakeAmount, 14);
+  const cx = x + w / 2, cy = y + h / 2;
+  const color = (DESTRUCTIBLE_KINDS[kind] || {}).color || '#8b5e3c';
+  particles.spawn(cx, cy, 16, color);
+
+  (blastHits || []).forEach(hit => {
+    const target = state.match.players.get(hit.targetId);
+    if (!target) return;
+    target.x = hit.x; target.y = hit.y;
+    if (target.id === state.selfId) { target.renderX = hit.x; target.renderY = hit.y; target.vx = 0; target.vy = 0; triggerDamageFlash(); }
+    target.hp = hit.newHp;
+    target.lives = hit.newLives;
+    target.status = hit.eliminated ? 'eliminated' : (hit.koed ? 'down' : 'active');
+    target.hitFlashTimer = 0.2;
+    target.stunTimer = hit.koed ? 0.6 : 0.22;
+  });
+});
+
+socket.on('obstacleRespawned', ({ id }) => {
+  state.match.destroyedObstacles.delete(id);
 });
 
 socket.on('playerRespawned', ({ id, x, y, hp }) => {
@@ -1510,7 +1580,7 @@ socket.on('playerRespawned', ({ id, x, y, hp }) => {
   p.x = x; p.y = y; p.renderX = x; p.renderY = y; p.hp = hp; p.status = 'active';
   p.invulnUntil = Date.now() + MATCH.respawnInvulnSec * 1000;
   p.speedBuffUntil = 0; p.damageBuffUntil = 0;
-  if (id === state.selfId) pushKillFeed('You respawned!');
+  if (id === state.selfId) pushKillFeed('You return to the trial!');
 });
 
 socket.on('playerLeft', ({ id }) => {
@@ -1522,9 +1592,9 @@ socket.on('playerLeft', ({ id }) => {
 socket.on('matchEnded', ({ reason, standings, winnerId }) => {
   switchScreen('results');
   const iWon = winnerId === state.selfId;
-  document.getElementById('results-title').textContent = iWon ? 'VICTORY!' : 'MATCH OVER';
+  document.getElementById('results-title').textContent = iWon ? 'PROTECTOR OF THE REALMS!' : 'THE TRIAL HAS ENDED';
   const winner = standings.find(s => s.id === winnerId);
-  const subtitle = winner ? `👑 ${winner.name} wins with ${winner.score} points!` : 'The match has ended.';
+  const subtitle = winner ? `👑 ${winner.name} is named Protector of the Realms with ${winner.score} Honor!` : 'The trial has concluded.';
   document.getElementById('results-subtitle').textContent = subtitle;
   if (iWon) sound.victory(); else sound.defeat();
 
@@ -1535,7 +1605,7 @@ socket.on('matchEnded', ({ reason, standings, winnerId }) => {
       <span class="standings-rank">${i + 1}</span>
       <span class="player-dot" style="background:${avatar.color}"></span>
       <span class="standings-name">${crownPrefix}${escapeHtml(s.name)}</span>
-      <span class="standings-stat">${s.score} pts</span>
+      <span class="standings-stat">${s.score} Honor</span>
       <span class="standings-stat">${s.lives}❤</span>
       <span class="standings-stat">DMG ${s.damageDealt}</span>
     </div>`;

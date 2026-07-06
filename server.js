@@ -10,7 +10,8 @@ import {
   CROWN, CROWN_SPAWNS, SCORE,
   CTO_TASKS, CTO_TASK_GAP_SEC, CTO_TASK_FIRST_DELAY_SEC, GRAB,
   ZONES, BOSS, COVER_OBSTACLES,
-  OBSTACLES, ITEM_SPAWNS, TABLE_SPAWNS, TABLE_RESPAWN_SEC, PLAYER_SPAWNS, AVATARS, clamp, normalizeAngleDiff
+  OBSTACLES, ITEM_SPAWNS, TABLE_SPAWNS, TABLE_RESPAWN_SEC, PLAYER_SPAWNS, AVATARS, clamp, normalizeAngleDiff,
+  DESTRUCTIBLE_KINDS, OBSTACLE_RESPAWN_SEC, DEBRIS_BLAST, THROWN_PLAYER_IMPACT_DAMAGE
 } from './shared/constants.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -60,6 +61,7 @@ class Room {
     this.taskTimeoutHandle = null;
     this.thrownPlayers = new Map();
     this.bossTimeoutHandle = null;
+    this.obstacleStates = new Map();
     this.itemSeq = 0;
     this.projSeq = 0;
     this.powerupSeq = 0;
@@ -188,8 +190,70 @@ function distanceToObstacle(x, y, ob) {
   return Math.hypot(x - cx, y - cy);
 }
 
-function isNearCover(x, y) {
-  return COVER_OBSTACLES.some(ob => distanceToObstacle(x, y, ob) <= BOSS.coverRadius);
+function isNearCover(room, x, y) {
+  return COVER_OBSTACLES.some(ob => isObstacleSolid(room, ob) && distanceToObstacle(x, y, ob) <= BOSS.coverRadius);
+}
+
+// --- Destructible furniture ---
+// Only obstacles whose `kind` appears in DESTRUCTIBLE_KINDS get an entry here; everything
+// else (walls, trees, plants) has no entry and is therefore always solid/permanent.
+function initObstacleStates(room) {
+  room.obstacleStates.clear();
+  for (const ob of OBSTACLES) {
+    const def = DESTRUCTIBLE_KINDS[ob.kind];
+    if (def) room.obstacleStates.set(ob.id, { hp: def.hp, destroyed: false });
+  }
+}
+
+function isObstacleSolid(room, ob) {
+  const state = room.obstacleStates.get(ob.id);
+  return !state || !state.destroyed;
+}
+
+function scheduleObstacleRespawn(room, ob) {
+  setTimeout(() => {
+    if (room.state !== 'playing') return;
+    const state = room.obstacleStates.get(ob.id);
+    if (!state || !state.destroyed) return;
+    state.hp = DESTRUCTIBLE_KINDS[ob.kind].hp;
+    state.destroyed = false;
+    room.io.to(room.code).emit('obstacleRespawned', { id: ob.id });
+  }, OBSTACLE_RESPAWN_SEC * 1000);
+}
+
+// `allowChain` caps the "chain reaction" to a single hop: a destroyed obstacle can chip one
+// neighboring destructible obstacle, but that secondary hit never chains any further.
+function damageObstacle(room, ob, amount, hitX, hitY, allowChain = true) {
+  const state = room.obstacleStates.get(ob.id);
+  if (!state || state.destroyed) return;
+
+  state.hp -= amount;
+  if (state.hp > 0) return;
+
+  state.destroyed = true;
+  const blastHits = [];
+  const cx = ob.x + ob.w / 2, cy = ob.y + ob.h / 2;
+
+  if (allowChain) {
+    for (const player of room.players.values()) {
+      if (player.status !== 'active') continue;
+      const dist = Math.hypot(player.x - cx, player.y - cy);
+      if (dist > DEBRIS_BLAST.radius) continue;
+      const dirx = dist > 0 ? (player.x - cx) / dist : 1;
+      const diry = dist > 0 ? (player.y - cy) / dist : 0;
+      const result = applyDamage(room, player, DEBRIS_BLAST.blastDamage, dirx, diry, DEBRIS_BLAST.knockback, null);
+      if (result) blastHits.push({ targetId: player.id, ...result });
+    }
+
+    const neighbor = OBSTACLES.find(other =>
+      other.id !== ob.id && DESTRUCTIBLE_KINDS[other.kind] && isObstacleSolid(room, other) &&
+      distanceToObstacle(cx, cy, other) <= DEBRIS_BLAST.radius
+    );
+    if (neighbor) damageObstacle(room, neighbor, DEBRIS_BLAST.chainDamage, cx, cy, false);
+  }
+
+  room.io.to(room.code).emit('obstacleDestroyed', { id: ob.id, x: ob.x, y: ob.y, w: ob.w, h: ob.h, kind: ob.kind, blastHits });
+  scheduleObstacleRespawn(room, ob);
 }
 
 function scheduleBossEvent(room, delaySec) {
@@ -211,7 +275,7 @@ function resolveBossStomp(room) {
   const hits = [];
   for (const player of room.players.values()) {
     if (player.status !== 'active') continue;
-    if (isNearCover(player.x, player.y)) continue;
+    if (isNearCover(room, player.x, player.y)) continue;
     const angle = Math.random() * Math.PI * 2;
     const result = applyDamage(room, player, BOSS.damage, Math.cos(angle), Math.sin(angle), BOSS.knockback, null);
     if (result) hits.push({ targetId: player.id, ...result });
@@ -429,6 +493,7 @@ function beginPlaying(room) {
   room.projectiles.clear();
   room.powerups.clear();
   room.thrownPlayers.clear();
+  initObstacleStates(room);
   room.kingId = null;
   room.currentTask = null;
   if (room.taskTimeoutHandle) { clearTimeout(room.taskTimeoutHandle); room.taskTimeoutHandle = null; }
@@ -473,8 +538,9 @@ function tick(room) {
 
     if (!removed) {
       for (const d of OBSTACLES) {
-        if (proj.x > d.x && proj.x < d.x + d.w && proj.y > d.y && proj.y < d.y + d.h) {
+        if (isObstacleSolid(room, d) && proj.x > d.x && proj.x < d.x + d.w && proj.y > d.y && proj.y < d.y + d.h) {
           removed = true;
+          if (DESTRUCTIBLE_KINDS[d.kind]) damageObstacle(room, d, ITEM_TYPES[proj.itemType].damage, proj.x, proj.y);
           break;
         }
       }
@@ -544,9 +610,10 @@ function tick(room) {
 
     if (!landed) {
       for (const ob of OBSTACLES) {
-        if (tp.x > ob.x && tp.x < ob.x + ob.w && tp.y > ob.y && tp.y < ob.y + ob.h) {
+        if (isObstacleSolid(room, ob) && tp.x > ob.x && tp.x < ob.x + ob.w && tp.y > ob.y && tp.y < ob.y + ob.h) {
           landed = true;
           impactDamage = GRAB.damageToThrown;
+          if (DESTRUCTIBLE_KINDS[ob.kind]) damageObstacle(room, ob, THROWN_PLAYER_IMPACT_DAMAGE, tp.x, tp.y);
           break;
         }
       }

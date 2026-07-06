@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Office Fight Arena</title>
+  <title>Champions of the Realms</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -14,8 +14,8 @@
     <!-- ============ LANDING SCREEN ============ -->
     <div id="landing-screen" class="screen-overlay active">
       <div class="modal-box glass-panel">
-        <h1 class="logo-gradient">Office Fight Arena</h1>
-        <p class="modal-desc">Punch, kick, and hurl staplers (or whole tables) at your coworkers. Explore the Office, Rooftop, Lobby, Terrace and Park to find power-ups and the hidden crown to become King of the Clan. Up to 7 players per room.</p>
+        <h1 class="logo-gradient">Champions of the Realms</h1>
+        <p class="modal-desc">Strike, sweep, and hurl relics at rival champions summoned to the Grand Convergence. Journey through the Sacred Grove, Sky Sanctum, Hall of the First Trial, Mystic Garden and Elderwood Wilds to gather Blessings and find the hidden Relic of Ascension. Up to 7 champions per trial.</p>
 
         <input type="text" id="name-input" maxlength="16" placeholder="Your name" class="text-input">
 
@@ -25,9 +25,9 @@
 
         <div class="landing-actions">
           <button class="btn-gradient" id="quickplay-btn">QUICK PLAY</button>
-          <button class="btn-secondary" id="create-btn">CREATE ROOM</button>
+          <button class="btn-secondary" id="create-btn">GATHER CHAMPIONS</button>
           <div class="join-row">
-            <input type="text" id="join-code-input" maxlength="5" placeholder="ROOM CODE" class="text-input code-input">
+            <input type="text" id="join-code-input" maxlength="5" placeholder="SIGIL CODE" class="text-input code-input">
             <button class="btn-secondary" id="join-btn">JOIN</button>
           </div>
           <button class="btn-secondary" id="how-to-play-btn">📖 HOW TO PLAY</button>
@@ -40,40 +40,40 @@
       <div class="modal-box glass-panel guide-box">
         <h1 class="logo-gradient" style="font-size:26px;">How to Play</h1>
         <div class="guide-content">
-          <h3>🎯 Objective</h3>
-          <p>Punch, kick, and throw office items to knock out other players. You have 3 lives — survive until time runs out, or be the last one standing.</p>
+          <h3>🎯 The Grand Convergence</h3>
+          <p>Once every hundred years, champions from every realm are summoned to compete in the Sacred Trials. Strike, sweep, and hurl relics to defeat rival champions. You have 3 lives — survive until the trial ends, or be the last champion standing.</p>
 
           <h3>🎮 Controls</h3>
           <ul>
             <li><strong>WASD / Arrow Keys / Joystick</strong> — move</li>
-            <li><strong>F</strong> — punch</li>
-            <li><strong>G</strong> — kick</li>
-            <li><strong>E</strong> — pick up / throw an item, or grab / throw a player</li>
+            <li><strong>F</strong> — strike</li>
+            <li><strong>G</strong> — sweep</li>
+            <li><strong>E</strong> — take up / hurl a relic, or grapple / hurl a champion</li>
           </ul>
 
           <h3>🥊 Combat</h3>
-          <p>Punches are fast and light, kicks hit harder but are slower. Landing a hit knocks the target back. Dropping to 0 HP costs a life and respawns you with a few seconds of invulnerability.</p>
+          <p>Strikes are fast and light, sweeps hit harder but are slower. Landing a hit knocks the target back. Dropping to 0 HP costs a life and respawns you with a few seconds of invulnerability.</p>
 
-          <h3>🍕 Power-ups</h3>
-          <p>Coffee, tea, lemonade, pizza and burgers are scattered around the office — walk over one to heal. Coffee also grants a speed boost and pizza a damage boost for a few seconds.</p>
+          <h3>🍕 Blessings</h3>
+          <p>Blessing of Swiftness, Spirit Herb, Sunfruit Nectar, Blessing of Power and Ancient Feast are scattered across the realms — walk over one to heal. Blessing of Swiftness also grants a speed boost and Blessing of Power a damage boost for a few seconds.</p>
 
-          <h3>📦 Office items & grabbing players</h3>
-          <p>Staplers, keyboards and chairs can be picked up (E) and thrown (E again) at other players for extra damage. Watch for the rare heavy table — a direct hit knocks a player out instantly. You can also grab a nearby opponent instead of an item — carry them and throw them into someone else!</p>
+          <h3>📦 Relics & grappling champions</h3>
+          <p>Throwing Shards, Rune Tablets and Ironwood Boughs can be taken up (E) and hurled (E again) at other champions for extra damage. Watch for the rare Sundering Boulder — a direct hit defeats a champion instantly. You can also grapple a nearby rival instead of a relic — carry them and hurl them into someone else!</p>
 
-          <h3>🏢 Explore the building</h3>
-          <p>Staircases connect Main Office → Rooftop Lounge → Reception Lobby → Terrace → Park. Step onto a staircase's arrow to travel between areas — each one has its own items, power-ups, and hiding spots.</p>
+          <h3>🌍 Explore the realms</h3>
+          <p>Ley Portals connect the Sacred Grove → Sky Sanctum → Hall of the First Trial → Mystic Garden Terrace → Elderwood Wilds. Step onto a portal's arrow to travel between realms — each one has its own relics, Blessings, and hiding spots.</p>
 
-          <h3>🏆 Scoring</h3>
-          <p>The match winner is whoever has the highest score - not whoever survives! Score is completely separate from lives: collect the hidden crown (+1000), complete a task (+300), grab and throw a player (+100), or grab a power-up (+20). Check the live leaderboard to see who's leading.</p>
+          <h3>🏆 Honor</h3>
+          <p>The trial's winner is whoever has earned the most Honor - not whoever survives! Honor is completely separate from lives: claim the hidden Relic of Ascension (+1000), complete a Sacred Trial (+300), grapple and hurl a champion (+100), or gather a Blessing (+20). Check the Hall of Honor to see who's leading.</p>
 
-          <h3>👑 King of the Clan</h3>
-          <p>A hidden golden crown spawns somewhere in the building. Whoever has the highest score wears a crown above their head and is the current "King of the Clan" - the same person who'll win the match if the score holds.</p>
+          <h3>👑 The Ascendant</h3>
+          <p>A hidden Relic of Ascension spawns somewhere across the realms. Whoever has the most Honor wears a crown above their head as the current "Ascendant" - the same champion who'll be named Protector of the Realms if the Honor holds.</p>
 
-          <h3>📋 Tasks</h3>
-          <p>Every so often, a task is announced to the whole match (land KOs, reach the rooftop, survive without damage, and more). First player to complete it earns bonus score.</p>
+          <h3>📋 Sacred Trials</h3>
+          <p>Every so often, a Sacred Trial is announced to every champion (defeat rivals, ascend to the Sky Sanctum, endure unscathed, and more). First champion to complete it earns bonus Honor.</p>
 
-          <h3>👹 The Boss</h3>
-          <p>Periodically a giant boss appears with a warning - everyone sees it, wherever they are. When it stomps, anyone not standing near cover (a desk, bench, table, or tree) takes a heavy hit. Get to cover fast!</p>
+          <h3>👹 The Ancient Guardian</h3>
+          <p>Periodically the Ancient Guardian appears with a warning - every champion sees it, wherever they are. When it delivers its Judgment, anyone not sheltered by a Wardstone (a pillar, bench, fountain, or tree) takes a heavy hit. Find shelter fast!</p>
         </div>
         <button class="btn-gradient" id="close-guide-btn">GOT IT</button>
       </div>
@@ -82,31 +82,31 @@
     <!-- ============ LOBBY SCREEN ============ -->
     <div id="lobby-screen" class="screen-overlay">
       <div class="modal-box glass-panel">
-        <h1 class="logo-gradient" style="font-size:28px;">Room Lobby</h1>
+        <h1 class="logo-gradient" style="font-size:28px;">The Gathering</h1>
         <div class="room-code-box">
-          <span class="hud-label">ROOM CODE</span>
+          <span class="hud-label">CONVERGENCE SIGIL</span>
           <span id="lobby-code" class="room-code-value">-----</span>
           <button class="copy-btn" id="copy-code-btn" title="Copy code">COPY</button>
         </div>
 
         <div id="lobby-players" class="lobby-players"></div>
-        <div id="lobby-count" class="hud-label">0 / 7 PLAYERS</div>
+        <div id="lobby-count" class="hud-label">0 / 7 CHAMPIONS</div>
 
         <div id="lobby-error" class="error-text"></div>
 
         <div style="display:flex; gap:16px;">
-          <button class="btn-gradient" id="start-match-btn">START MATCH</button>
+          <button class="btn-gradient" id="start-match-btn">BEGIN TRIAL</button>
           <button class="btn-secondary" id="leave-lobby-btn">LEAVE ROOM</button>
         </div>
         <button class="btn-secondary" id="lobby-how-to-play-btn">📖 HOW TO PLAY</button>
-        <p id="lobby-hint" class="modal-desc" style="margin-top:4px;">Waiting for the host to start the match...</p>
+        <p id="lobby-hint" class="modal-desc" style="margin-top:4px;">Waiting for the host to begin the trial...</p>
       </div>
     </div>
 
     <!-- ============ COUNTDOWN OVERLAY ============ -->
     <div id="countdown-screen" class="screen-overlay">
       <div class="countdown-wrap">
-        <div class="countdown-label">Match starting in</div>
+        <div class="countdown-label">The trial begins in</div>
         <div class="countdown-number" id="countdown-number">3</div>
       </div>
     </div>
@@ -130,20 +130,20 @@
     <div id="leaderboard" class="glass-panel" style="display:none;"></div>
     <div id="kill-feed"></div>
     <div id="cto-task-banner" class="glass-panel" style="display:none;">
-      <span class="hud-label">📋 TASK</span>
+      <span class="hud-label">⚔️ SACRED TRIAL</span>
       <span id="cto-task-label" class="cto-task-text"></span>
       <span id="cto-task-timer" class="cto-task-timer"></span>
     </div>
     <div id="task-flash" class="glass-panel">
-      <div class="task-flash-label">📋 New Task</div>
+      <div class="task-flash-label">⚔️ New Sacred Trial</div>
       <div class="task-flash-text" id="task-flash-text"></div>
     </div>
 
     <div id="controls-hint" class="glass-panel" style="display:none;">
       <div class="controls-hint-row"><kbd>WASD</kbd><span>Move</span></div>
-      <div class="controls-hint-row"><kbd>F</kbd><span>Punch</span></div>
-      <div class="controls-hint-row"><kbd>G</kbd><span>Kick</span></div>
-      <div class="controls-hint-row"><kbd>E</kbd><span>Grab / Throw</span></div>
+      <div class="controls-hint-row"><kbd>F</kbd><span>Strike</span></div>
+      <div class="controls-hint-row"><kbd>G</kbd><span>Sweep</span></div>
+      <div class="controls-hint-row"><kbd>E</kbd><span>Grapple / Hurl</span></div>
       <button id="arena-how-to-play-btn" class="controls-hint-help">❓ Full Guide</button>
     </div>
 
@@ -164,7 +164,7 @@
         <p class="modal-desc" id="results-subtitle"></p>
         <div id="standings-table" class="standings-table"></div>
         <div style="display:flex; gap:16px;">
-          <button class="btn-gradient" id="back-to-lobby-btn">BACK TO LOBBY</button>
+          <button class="btn-gradient" id="back-to-lobby-btn">RETURN TO THE GATHERING</button>
           <button class="btn-secondary" id="leave-results-btn">LEAVE ROOM</button>
         </div>
       </div>

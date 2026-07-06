@@ -1,17 +1,18 @@
 // Single source of truth for values that both server.js and public/client.js depend on.
 // Keeping this shared avoids server/client drifting apart on arena size, combat math, etc.
 
-// The building is a vertical stack of zones, each separated by a solid wall only
-// crossable via a staircase pair: Main Floor -> Rooftop -> Lobby -> Terrace -> Park.
+// The Meeting of Realms is a vertical stack of realms, each separated by a Realm Ward only
+// crossable via a Ley Portal pair: Sacred Grove -> Sky Sanctum -> Hall of the First Trial ->
+// Mystic Garden Terrace -> Elderwood Wilds.
 export const ARENA = { width: 1600, height: 3400 };
 export const MAIN_FLOOR_HEIGHT = 1000;
 
 export const ZONES = {
-  mainFloor: { yMin: 0, yMax: 1000, label: null, tint: null },
-  rooftop: { yMin: 1050, yMax: 1550, label: 'ROOFTOP LOUNGE', tint: 'rgba(255, 190, 110, 0.05)' },
-  lobby: { yMin: 1600, yMax: 2100, label: 'RECEPTION LOBBY', tint: 'rgba(255, 225, 180, 0.04)' },
-  terrace: { yMin: 2150, yMax: 2650, label: 'TERRACE', tint: 'rgba(120, 200, 255, 0.06)' },
-  park: { yMin: 2700, yMax: 3400, label: 'PARK', tint: 'rgba(110, 255, 140, 0.07)' }
+  mainFloor: { yMin: 0, yMax: 1000, label: 'THE SACRED GROVE', tint: 'rgba(90, 200, 140, 0.04)' },
+  rooftop: { yMin: 1050, yMax: 1550, label: 'THE SKY SANCTUM', tint: 'rgba(140, 200, 255, 0.06)' },
+  lobby: { yMin: 1600, yMax: 2100, label: 'HALL OF THE FIRST TRIAL', tint: 'rgba(212, 166, 61, 0.05)' },
+  terrace: { yMin: 2150, yMax: 2650, label: 'MYSTIC GARDEN TERRACE', tint: 'rgba(79, 179, 158, 0.06)' },
+  park: { yMin: 2700, yMax: 3400, label: 'THE ELDERWOOD WILDS', tint: 'rgba(60, 180, 90, 0.08)' }
 };
 
 export const ROOM = { maxPlayers: 7, minToStart: 2, codeLength: 5 };
@@ -30,17 +31,17 @@ export const MATCH = {
 // Tasks with a `zone` field use generalized "arrive at this area" logic - a player already
 // standing there when the task starts doesn't get free credit; they must actually arrive.
 export const CTO_TASKS = [
-  { id: 'kos', label: 'Knock out {target} other players', target: 2, durationSec: 30 },
-  { id: 'reachRooftop', zone: 'rooftop', label: 'Get to the Rooftop Lounge', target: 1, durationSec: 20 },
-  { id: 'reachPark', zone: 'park', label: 'Get to the Park', target: 1, durationSec: 30 },
-  { id: 'surviveNoDamage', label: 'Avoid taking damage for {target} seconds', target: 12, durationSec: 25 },
-  { id: 'collectPowerups', label: 'Pick up {target} food or drink power-ups', target: 2, durationSec: 25 },
-  { id: 'dealDamage', label: 'Deal {target} damage to other players', target: 40, durationSec: 25 },
-  { id: 'throwItem', label: 'Pick up and throw any office item', target: 1, durationSec: 20 },
-  { id: 'throwPlayers', label: 'Grab {target} players and throw them', target: 2, durationSec: 35 },
-  { id: 'collectCrown', label: 'Find and collect the hidden golden crown', target: 1, durationSec: 30 },
-  { id: 'itemKo', label: 'Knock out a player by throwing an item at them', target: 1, durationSec: 30 },
-  { id: 'landHits', label: 'Land {target} punches or kicks on other players', target: 5, durationSec: 30 }
+  { id: 'kos', label: 'Defeat {target} rival champions in single combat', target: 2, durationSec: 30 },
+  { id: 'reachRooftop', zone: 'rooftop', label: 'Ascend to the Sky Sanctum', target: 1, durationSec: 20 },
+  { id: 'reachPark', zone: 'park', label: 'Journey to the Elderwood Wilds', target: 1, durationSec: 30 },
+  { id: 'surviveNoDamage', label: 'Endure unscathed for {target} seconds', target: 12, durationSec: 25 },
+  { id: 'collectPowerups', label: 'Gather {target} Blessings from the realms', target: 2, durationSec: 25 },
+  { id: 'dealDamage', label: 'Strike {target} damage upon rival champions', target: 40, durationSec: 25 },
+  { id: 'throwItem', label: 'Hurl a relic at a rival champion', target: 1, durationSec: 20 },
+  { id: 'throwPlayers', label: 'Grapple and hurl {target} champions', target: 2, durationSec: 35 },
+  { id: 'collectCrown', label: 'Claim the hidden Relic of Ascension', target: 1, durationSec: 30 },
+  { id: 'itemKo', label: 'Defeat a champion with a hurled relic', target: 1, durationSec: 30 },
+  { id: 'landHits', label: 'Land {target} strikes upon rival champions', target: 5, durationSec: 30 }
 ];
 // Scoring: the match winner is whoever has the highest score, completely independent of
 // lives remaining - even a player who was eliminated early can still win on score.
@@ -111,16 +112,17 @@ export const POWERUP_SPAWNS = [
 
 // Main office floor: a 4x3 cubicle grid (12 desks) with open corridors between pods.
 const MAIN_DESKS = [];
+let deskSeq = 0;
 for (const cx of [200, 600, 1000, 1400]) {
   for (const cy of [200, 500, 800]) {
-    MAIN_DESKS.push({ x: cx - 70, y: cy - 35, w: 140, h: 70 });
+    MAIN_DESKS.push({ id: `desk-${deskSeq++}`, kind: 'desk', x: cx - 70, y: cy - 35, w: 140, h: 70 });
   }
 }
 
 // Upstairs lounge floor: a couple of desks for coworkers who "work from the roof deck".
 const UPSTAIRS_DESKS = [
-  { x: 325, y: 1150, w: 150, h: 75 },
-  { x: 1125, y: 1150, w: 150, h: 75 }
+  { id: `desk-${deskSeq++}`, kind: 'desk', x: 325, y: 1150, w: 150, h: 75 },
+  { id: `desk-${deskSeq++}`, kind: 'desk', x: 1125, y: 1150, w: 150, h: 75 }
 ];
 
 export const DESKS = [...MAIN_DESKS, ...UPSTAIRS_DESKS];
@@ -128,9 +130,12 @@ export const DESKS = [...MAIN_DESKS, ...UPSTAIRS_DESKS];
 // Cubicle divider walls between desk pods. Same rectangle collision as desks
 // (block players + thrown items) but rendered as thin partition panels, not furniture.
 export const PARTITIONS = [
-  { x: 393, y: 145, w: 14, h: 110 }, { x: 1193, y: 145, w: 14, h: 110 },
-  { x: 393, y: 445, w: 14, h: 110 }, { x: 1193, y: 445, w: 14, h: 110 },
-  { x: 393, y: 745, w: 14, h: 110 }, { x: 1193, y: 745, w: 14, h: 110 }
+  { id: 'partition-0', kind: 'partition', x: 393, y: 145, w: 14, h: 110 },
+  { id: 'partition-1', kind: 'partition', x: 1193, y: 145, w: 14, h: 110 },
+  { id: 'partition-2', kind: 'partition', x: 393, y: 445, w: 14, h: 110 },
+  { id: 'partition-3', kind: 'partition', x: 1193, y: 445, w: 14, h: 110 },
+  { id: 'partition-4', kind: 'partition', x: 393, y: 745, w: 14, h: 110 },
+  { id: 'partition-5', kind: 'partition', x: 1193, y: 745, w: 14, h: 110 }
 ];
 
 // Solid dividers between vertical zones. Only crossable via STAIRCASES.
@@ -145,26 +150,26 @@ export const FLOOR_WALLS = [
 // Kept well clear of the staircase clusters near the top (y~1490-1660) and
 // bottom (y~2040-2210) of this zone so furniture never blocks the entry/exit path.
 const LOBBY_OBSTACLES = [
-  { x: 700, y: 1810, w: 200, h: 80, kind: 'reception' },
-  { x: 420, y: 1920, w: 110, h: 45, kind: 'bench' },
-  { x: 1070, y: 1920, w: 110, h: 45, kind: 'bench' }
+  { id: 'reception-0', x: 700, y: 1810, w: 200, h: 80, kind: 'reception' },
+  { id: 'bench-0', x: 420, y: 1920, w: 110, h: 45, kind: 'bench' },
+  { id: 'bench-1', x: 1070, y: 1920, w: 110, h: 45, kind: 'bench' }
 ];
 
 // Terrace: outdoor bistro tables.
 const TERRACE_OBSTACLES = [
-  { x: 500, y: 2250, w: 70, h: 70, kind: 'bistro' },
-  { x: 1030, y: 2250, w: 70, h: 70, kind: 'bistro' },
-  { x: 500, y: 2480, w: 70, h: 70, kind: 'bistro' },
-  { x: 1030, y: 2480, w: 70, h: 70, kind: 'bistro' }
+  { id: 'bistro-0', x: 500, y: 2250, w: 70, h: 70, kind: 'bistro' },
+  { id: 'bistro-1', x: 1030, y: 2250, w: 70, h: 70, kind: 'bistro' },
+  { id: 'bistro-2', x: 500, y: 2480, w: 70, h: 70, kind: 'bistro' },
+  { id: 'bistro-3', x: 1030, y: 2480, w: 70, h: 70, kind: 'bistro' }
 ];
 
 // Park: lots of trees (small trunk hitbox, bigger visual canopy).
 const PARK_TREES = [
-  { x: 300, y: 2800, w: 40, h: 40, kind: 'tree' }, { x: 500, y: 2950, w: 40, h: 40, kind: 'tree' },
-  { x: 750, y: 2820, w: 40, h: 40, kind: 'tree' }, { x: 950, y: 3000, w: 40, h: 40, kind: 'tree' },
-  { x: 1150, y: 2850, w: 40, h: 40, kind: 'tree' }, { x: 1350, y: 3000, w: 40, h: 40, kind: 'tree' },
-  { x: 400, y: 3150, w: 40, h: 40, kind: 'tree' }, { x: 900, y: 3200, w: 40, h: 40, kind: 'tree' },
-  { x: 1250, y: 3200, w: 40, h: 40, kind: 'tree' }
+  { id: 'tree-0', x: 300, y: 2800, w: 40, h: 40, kind: 'tree' }, { id: 'tree-1', x: 500, y: 2950, w: 40, h: 40, kind: 'tree' },
+  { id: 'tree-2', x: 750, y: 2820, w: 40, h: 40, kind: 'tree' }, { id: 'tree-3', x: 950, y: 3000, w: 40, h: 40, kind: 'tree' },
+  { id: 'tree-4', x: 1150, y: 2850, w: 40, h: 40, kind: 'tree' }, { id: 'tree-5', x: 1350, y: 3000, w: 40, h: 40, kind: 'tree' },
+  { id: 'tree-6', x: 400, y: 3150, w: 40, h: 40, kind: 'tree' }, { id: 'tree-7', x: 900, y: 3200, w: 40, h: 40, kind: 'tree' },
+  { id: 'tree-8', x: 1250, y: 3200, w: 40, h: 40, kind: 'tree' }
 ];
 
 export const ZONE_OBSTACLES = [...LOBBY_OBSTACLES, ...TERRACE_OBSTACLES, ...PARK_TREES];
@@ -175,16 +180,35 @@ export const OBSTACLES = [...DESKS, ...PARTITIONS, ...FLOOR_WALLS, ...ZONE_OBSTA
 // zone-divider walls (you can't hide inside a wall).
 export const COVER_OBSTACLES = [...DESKS, ...PARTITIONS, ...ZONE_OBSTACLES];
 
+// Destructible relics of the realms: every obstacle above with a `kind` in this map can be
+// smashed by a thrown relic or a hurled champion. FLOOR_WALLS have no `kind` here and stay
+// indestructible - breaking a Realm Ward would let champions skip the Ley Portal gating, which
+// is load-bearing for the level design. Ancient Trees are left out too (permanent cover, not
+// "breakable" set dressing).
+export const DESTRUCTIBLE_KINDS = {
+  desk: { hp: 60, debris: 'rubble', color: '#8a8578' },
+  partition: { hp: 40, debris: 'shards', color: '#5fb3a3' },
+  reception: { hp: 90, debris: 'rubble', color: '#c9a63d' },
+  bench: { hp: 50, debris: 'rubble', color: '#9a9384' },
+  bistro: { hp: 55, debris: 'shards', color: '#7bc4b0' }
+};
+export const OBSTACLE_RESPAWN_SEC = 25;
+// A destroyed obstacle knocks back/dings nearby players and can chip one neighboring
+// obstacle - a small, one-hop "chain reaction" rather than a real physics cascade.
+export const DEBRIS_BLAST = { radius: 90, knockback: 220, blastDamage: 10, chainDamage: 20 };
+// A thrown player slamming into furniture does more structural damage than a thrown item.
+export const THROWN_PLAYER_IMPACT_DAMAGE = 50;
+
 // Walking onto a staircase hotspot teleports the player to its target point.
 export const STAIRCASES = [
-  { id: 'main-up', x: 770, y: 950, w: 60, h: 45, targetX: 800, targetY: 1110, arrow: '▲', to: 'ROOFTOP' },
-  { id: 'rooftop-down', x: 770, y: 1055, w: 60, h: 45, targetX: 800, targetY: 940, arrow: '▼', to: 'OFFICE' },
-  { id: 'rooftop-up', x: 770, y: 1500, w: 60, h: 45, targetX: 800, targetY: 1660, arrow: '▼', to: 'LOBBY' },
-  { id: 'lobby-down', x: 770, y: 1605, w: 60, h: 45, targetX: 800, targetY: 1490, arrow: '▲', to: 'ROOFTOP' },
-  { id: 'lobby-up', x: 770, y: 2050, w: 60, h: 45, targetX: 800, targetY: 2210, arrow: '▼', to: 'TERRACE' },
-  { id: 'terrace-down', x: 770, y: 2155, w: 60, h: 45, targetX: 800, targetY: 2040, arrow: '▲', to: 'LOBBY' },
-  { id: 'terrace-up', x: 770, y: 2600, w: 60, h: 45, targetX: 800, targetY: 2760, arrow: '▼', to: 'PARK' },
-  { id: 'park-down', x: 770, y: 2705, w: 60, h: 45, targetX: 800, targetY: 2590, arrow: '▲', to: 'TERRACE' }
+  { id: 'main-up', x: 770, y: 950, w: 60, h: 45, targetX: 800, targetY: 1110, arrow: '▲', to: 'SKY' },
+  { id: 'rooftop-down', x: 770, y: 1055, w: 60, h: 45, targetX: 800, targetY: 940, arrow: '▼', to: 'GROVE' },
+  { id: 'rooftop-up', x: 770, y: 1500, w: 60, h: 45, targetX: 800, targetY: 1660, arrow: '▼', to: 'TRIAL' },
+  { id: 'lobby-down', x: 770, y: 1605, w: 60, h: 45, targetX: 800, targetY: 1490, arrow: '▲', to: 'SKY' },
+  { id: 'lobby-up', x: 770, y: 2050, w: 60, h: 45, targetX: 800, targetY: 2210, arrow: '▼', to: 'GARDEN' },
+  { id: 'terrace-down', x: 770, y: 2155, w: 60, h: 45, targetX: 800, targetY: 2040, arrow: '▲', to: 'TRIAL' },
+  { id: 'terrace-up', x: 770, y: 2600, w: 60, h: 45, targetX: 800, targetY: 2760, arrow: '▼', to: 'WILDS' },
+  { id: 'park-down', x: 770, y: 2705, w: 60, h: 45, targetX: 800, targetY: 2590, arrow: '▲', to: 'GARDEN' }
 ];
 export const STAIRCASE_TELEPORT_COOLDOWN_SEC = 1.0;
 
@@ -239,14 +263,14 @@ export const BOSS = {
 };
 
 export const AVATARS = [
-  { id: 0, name: 'Red', color: '#ff6b6b', accessory: 'tie' },
-  { id: 1, name: 'Blue', color: '#4facfe', accessory: 'glasses' },
-  { id: 2, name: 'Green', color: '#05c46b', accessory: 'headphones' },
-  { id: 3, name: 'Yellow', color: '#ffc048', accessory: 'cap' },
-  { id: 4, name: 'Purple', color: '#a29bfe', accessory: 'bow' },
-  { id: 5, name: 'Orange', color: '#ff9f43', accessory: 'scarf' },
-  { id: 6, name: 'Pink', color: '#fd79a8', accessory: 'glasses' },
-  { id: 7, name: 'Cyan', color: '#00d2d3', accessory: 'tie' }
+  { id: 0, name: 'Ember Champion', color: '#ff6b6b', accessory: 'tie' },
+  { id: 1, name: 'Tide Champion', color: '#4facfe', accessory: 'glasses' },
+  { id: 2, name: 'Verdant Champion', color: '#05c46b', accessory: 'headphones' },
+  { id: 3, name: 'Sunfire Champion', color: '#ffc048', accessory: 'cap' },
+  { id: 4, name: 'Void Champion', color: '#a29bfe', accessory: 'bow' },
+  { id: 5, name: 'Dawn Champion', color: '#ff9f43', accessory: 'scarf' },
+  { id: 6, name: 'Bloom Champion', color: '#fd79a8', accessory: 'glasses' },
+  { id: 7, name: 'Frost Champion', color: '#00d2d3', accessory: 'tie' }
 ];
 
 export function clamp(v, min, max) {
