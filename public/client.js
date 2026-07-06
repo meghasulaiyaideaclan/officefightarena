@@ -94,9 +94,23 @@ class SoundManager {
   throwSfx() { this.tone(700, 0.1, 'sine', 0.12, 300); }
   hit() { this.tone(180, 0.15, 'square', 0.18); }
   ko() { this.tone(500, 0.35, 'sawtooth', 0.2, 900); }
-  pickup() { this.tone(900, 0.08, 'triangle', 0.1, 500); }
+  // A soft high harmonic layered on top of a cue to give ceremonial/magical moments (Blessings,
+  // the Relic, victory) a shimmer that plain combat tones don't have.
+  shimmer(freq, delay = 0) {
+    setTimeout(() => this.tone(freq, 0.5, 'sine', 0.05), delay);
+  }
+  pickup() {
+    this.tone(900, 0.08, 'triangle', 0.1, 500);
+    this.shimmer(2400, 40);
+  }
+  relic() {
+    [700, 1050, 1400, 1866].forEach((f, i) => this.shimmer(f, i * 60));
+    this.tone(500, 0.3, 'triangle', 0.14, 300);
+  }
   victory() {
     [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => this.tone(f, 0.4, 'triangle', 0.15), i * 100));
+    this.shimmer(2093, 400);
+    this.shimmer(2637, 460);
   }
   defeat() { this.tone(200, 0.5, 'sawtooth', 0.15, 400); }
   click() { this.tone(600, 0.05, 'sine', 0.08); }
@@ -772,8 +786,8 @@ function drawPlayer(p) {
 
   if (Date.now() < p.invulnUntil) {
     ctx.save();
-    ctx.strokeStyle = 'rgba(0,242,254,0.6)';
-    ctx.shadowColor = '#00f2fe'; ctx.shadowBlur = 12; ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(79,179,158,0.6)';
+    ctx.shadowColor = '#4fb39e'; ctx.shadowBlur = 12; ctx.lineWidth = 3;
     ctx.beginPath(); ctx.arc(0, 0, PLAYER.radius * 1.4, 0, Math.PI * 2); ctx.stroke();
     ctx.restore();
   }
@@ -830,7 +844,7 @@ function drawPlayer(p) {
   if (p.attackAnim && p.attackAnim.timer > 0) {
     const t = p.attackAnim.timer;
     ctx.globalAlpha = Math.min(1, t * 4);
-    ctx.fillStyle = p.attackAnim.type === 'punch' ? 'rgba(0,242,254,0.7)' : 'rgba(255,8,68,0.7)';
+    ctx.fillStyle = p.attackAnim.type === 'punch' ? 'rgba(79,179,158,0.7)' : 'rgba(217,105,74,0.7)';
     const dist = headX + (p.attackAnim.type === 'punch' ? COMBAT.punch.range * 0.5 : COMBAT.kick.range * 0.5);
     ctx.beginPath(); ctx.arc(dist, 0, p.attackAnim.type === 'punch' ? 10 : 14, 0, Math.PI * 2); ctx.fill();
   }
@@ -1205,7 +1219,7 @@ function updateArena(dt) {
               camera.x = p.x; camera.y = p.y;
               state.lastTeleportAt = performance.now();
               sound.throwSfx();
-              particles.spawn(p.x, p.y, 14, 'rgba(0,242,254,0.6)');
+              particles.spawn(p.x, p.y, 14, 'rgba(212,166,61,0.7)');
               break;
             }
           }
@@ -1666,7 +1680,7 @@ socket.on('crownCollected', ({ playerId, score, kingId, kingChanged }) => {
   state.match.crown = null;
   const player = state.match.players.get(playerId);
   if (player) particles.spawn(player.renderX, player.renderY, 16, CROWN.color);
-  sound.pickup();
+  sound.relic();
   pushKillFeed(`👑 ${player ? player.name : 'Someone'} claimed the Relic of Ascension! (+1000 Honor)`);
   applyScoreUpdate(playerId, score, kingId, kingChanged);
 });
