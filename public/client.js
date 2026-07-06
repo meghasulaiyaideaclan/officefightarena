@@ -52,7 +52,8 @@ const state = {
     crown: null,
     kingId: null,
     ctoTask: null,
-    thrownPlayers: new Map()
+    thrownPlayers: new Map(),
+    bossEvent: null
   },
   shakeAmount: 0,
   lastPunchAt: 0,
@@ -100,6 +101,10 @@ class SoundManager {
     this.tone(500, 0.12, 'triangle', 0.14);
     setTimeout(() => this.tone(750, 0.18, 'triangle', 0.16), 110);
   }
+  bossWarning() {
+    [0, 220, 440].forEach(delay => setTimeout(() => this.tone(110, 0.3, 'sawtooth', 0.22, 180), delay));
+  }
+  bossStomp() { this.tone(70, 0.4, 'square', 0.25, 140); }
 }
 const sound = new SoundManager();
 window.addEventListener('pointerdown', () => { sound.init(); sound.resume(); }, { once: true });
@@ -857,6 +862,61 @@ function render() {
   state.match.players.forEach(p => { if (p.status !== 'eliminated' || true) drawPlayer(p); });
 
   ctx.restore();
+
+  drawBossOverlay(w);
+}
+
+function drawBossOverlay(canvasWidth) {
+  if (!state.match.bossEvent) return;
+  if (Date.now() > state.match.bossEvent.endsAt) { state.match.bossEvent = null; return; }
+
+  const cx = canvasWidth / 2, cy = 140;
+  const shake = state.match.bossEvent.phase === 'impact' ? (Math.random() - 0.5) * 14 : 0;
+  const bob = state.match.bossEvent.phase === 'warning' ? Math.sin(performance.now() / 220) * 8 : 0;
+
+  ctx.save();
+  ctx.translate(cx + shake, cy + bob);
+
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.beginPath(); ctx.ellipse(0, 115, 95, 20, 0, 0, Math.PI * 2); ctx.fill();
+
+  ctx.fillStyle = '#2d2d3a';
+  ctx.beginPath(); ctx.ellipse(-32, 92, 19, 28, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(32, 92, 19, 28, 0, 0, Math.PI * 2); ctx.fill();
+
+  ctx.fillStyle = '#3b3050'; ctx.strokeStyle = '#1c1730'; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.ellipse(0, 20, 98, 88, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+
+  ctx.fillStyle = '#3b3050';
+  ctx.beginPath(); ctx.ellipse(-98, 10, 25, 42, -0.3, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(98, 10, 25, 42, 0.3, 0, Math.PI * 2); ctx.fill();
+
+  ctx.fillStyle = '#f4f4f8';
+  ctx.beginPath(); ctx.moveTo(-22, -50); ctx.lineTo(22, -50); ctx.lineTo(11, 62); ctx.lineTo(-11, 62); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#ff0844';
+  ctx.beginPath(); ctx.moveTo(-9, -45); ctx.lineTo(9, -45); ctx.lineTo(4, 56); ctx.lineTo(-4, 56); ctx.closePath(); ctx.fill();
+
+  ctx.fillStyle = '#e8b98a'; ctx.strokeStyle = '#a9673f'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(0, -88, 44, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+
+  ctx.strokeStyle = '#3d2c1e'; ctx.lineWidth = 5; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-25, -102); ctx.lineTo(-6, -95); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(25, -102); ctx.lineTo(6, -95); ctx.stroke();
+
+  ctx.fillStyle = '#000';
+  ctx.beginPath(); ctx.arc(-13, -88, 4.5, 0, Math.PI * 2); ctx.arc(13, -88, 4.5, 0, Math.PI * 2); ctx.fill();
+
+  ctx.strokeStyle = '#7a3b2e'; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.arc(0, -58, 15, Math.PI * 0.15, Math.PI * 0.85); ctx.stroke();
+
+  ctx.restore();
+
+  ctx.fillStyle = state.match.bossEvent.phase === 'warning' ? '#ffc048' : '#ff0844';
+  ctx.font = '900 16px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(
+    state.match.bossEvent.phase === 'warning' ? '⚠️ TAKE COVER! ⚠️' : '💥 STOMP! 💥',
+    cx, cy + 145
+  );
 }
 
 // ---------------- Game loop ----------------
@@ -1014,17 +1074,17 @@ function updateCtoBanner() {
 
 function renderLeaderboard() {
   const rows = [...state.match.players.values()]
-    .sort((a, b) => (b.lives - a.lives) || (b.hp - a.hp));
+    .sort((a, b) => (b.score || 0) - (a.score || 0));
   const king = state.match.kingId ? state.match.players.get(state.match.kingId) : null;
-  const kingBanner = king ? `<div class="leaderboard-king">👑 King of the Clan: ${escapeHtml(king.name)}</div>` : '';
-  leaderboardEl.innerHTML = `<span class="hud-label">STANDINGS</span>` + kingBanner + rows.map(p => {
+  const kingBanner = king ? `<div class="leaderboard-king">👑 Leading: ${escapeHtml(king.name)}</div>` : '';
+  leaderboardEl.innerHTML = `<span class="hud-label">STANDINGS (SCORE)</span>` + kingBanner + rows.map(p => {
     const avatar = AVATARS[p.avatarId] || AVATARS[0];
     const status = p.status === 'eliminated' ? ' (out)' : '';
     const crownPrefix = p.id === state.match.kingId ? '👑 ' : '';
     return `<div class="leaderboard-row">
       <span class="player-dot" style="background:${avatar.color}"></span>
       <span class="leaderboard-name">${crownPrefix}${escapeHtml(p.name)}${status}</span>
-      <span class="leaderboard-score">👑${p.crownScore || 0}</span>
+      <span class="leaderboard-score">${p.score || 0}</span>
       <span>${p.lives}❤</span>
     </div>`;
   }).join('');
@@ -1145,6 +1205,7 @@ socket.on('matchStarted', data => {
   state.match.kingId = null;
   state.match.ctoTask = null;
   state.match.thrownPlayers.clear();
+  state.match.bossEvent = null;
 
   data.players.forEach(sp => {
     const avatar = AVATARS[sp.avatarId] || AVATARS[0];
@@ -1152,7 +1213,7 @@ socket.on('matchStarted', data => {
       id: sp.id, name: sp.name, avatarId: sp.avatarId, color: avatar.color,
       x: sp.x, y: sp.y, renderX: sp.x, renderY: sp.y, angle: sp.angle, renderAngle: sp.angle,
       vx: 0, vy: 0, hp: sp.hp, lives: sp.lives, status: sp.status, holding: sp.holding, holdingType: null,
-      crownScore: sp.crownScore || 0, carrying: null, carriedBy: null,
+      score: sp.score || 0, carrying: null, carriedBy: null,
       attackAnim: null, hitFlashTimer: 0, stunTimer: 0, invulnUntil: Date.now() + MATCH.respawnInvulnSec * 1000,
       speedBuffUntil: 0, speedBuffMultiplier: 1, damageBuffUntil: 0,
       moving: false
@@ -1241,7 +1302,7 @@ socket.on('playerGrabbed', ({ carrierId, targetId }) => {
   pushKillFeed(`🤼 ${carrier ? carrier.name : 'Someone'} grabbed ${target ? target.name : 'someone'}!`);
 });
 
-socket.on('playerThrown', ({ carrierId, targetId, x, y, angle }) => {
+socket.on('playerThrown', ({ carrierId, targetId, x, y, angle, score, kingId, kingChanged }) => {
   const carrier = state.match.players.get(carrierId);
   const target = state.match.players.get(targetId);
   if (carrier) carrier.carrying = null;
@@ -1253,6 +1314,7 @@ socket.on('playerThrown', ({ carrierId, targetId, x, y, angle }) => {
   sound.throwSfx();
   pushKillFeed(`🤾 ${carrier ? carrier.name : 'Someone'} threw ${target ? target.name : 'someone'}!`);
   state.match.thrownPlayers.set(targetId, { x, y, renderX: x, renderY: y });
+  applyScoreUpdate(carrierId, score, kingId, kingChanged);
 });
 
 socket.on('thrownPlayerSync', list => {
@@ -1302,7 +1364,18 @@ socket.on('powerupSpawned', powerup => {
   state.match.powerups.set(powerup.id, { ...powerup });
 });
 
-socket.on('powerupCollected', ({ id, type, playerId, newHp, buff, buffDurationSec, buffMultiplier }) => {
+function applyScoreUpdate(playerId, score, kingId, kingChanged) {
+  const player = state.match.players.get(playerId);
+  if (player && typeof score === 'number') player.score = score;
+  if (kingChanged) {
+    state.match.kingId = kingId;
+    const king = state.match.players.get(kingId);
+    pushKillFeed(`👑 ${king ? king.name : 'Someone'} is the new King of the Clan!`);
+    sound.victory();
+  }
+}
+
+socket.on('powerupCollected', ({ id, type, playerId, newHp, buff, buffDurationSec, buffMultiplier, score, kingId, kingChanged }) => {
   state.match.powerups.delete(id);
   const player = state.match.players.get(playerId);
   if (!player) return;
@@ -1312,27 +1385,20 @@ socket.on('powerupCollected', ({ id, type, playerId, newHp, buff, buffDurationSe
   sound.pickup();
   particles.spawn(player.renderX, player.renderY, 10, POWERUPS[type].color);
   pushKillFeed(`${POWERUP_ICONS[type] || ''} ${player.name} grabbed ${aOrAn(type)} ${type}! +${POWERUPS[type].heal} HP`);
+  applyScoreUpdate(playerId, score, kingId, kingChanged);
 });
 
 socket.on('crownSpawned', crown => {
   state.match.crown = crown;
 });
 
-socket.on('crownCollected', ({ playerId, crownScore, kingId, kingChanged }) => {
+socket.on('crownCollected', ({ playerId, score, kingId, kingChanged }) => {
   state.match.crown = null;
   const player = state.match.players.get(playerId);
-  if (player) {
-    player.crownScore = crownScore;
-    particles.spawn(player.renderX, player.renderY, 16, CROWN.color);
-  }
+  if (player) particles.spawn(player.renderX, player.renderY, 16, CROWN.color);
   sound.pickup();
-  pushKillFeed(`👑 ${player ? player.name : 'Someone'} grabbed the crown! (${crownScore})`);
-  if (kingChanged) {
-    state.match.kingId = kingId;
-    const king = state.match.players.get(kingId);
-    pushKillFeed(`👑 ${king ? king.name : 'Someone'} is the new King of the Clan!`);
-    sound.victory();
-  }
+  pushKillFeed(`👑 ${player ? player.name : 'Someone'} grabbed the crown! (+1000 score)`);
+  applyScoreUpdate(playerId, score, kingId, kingChanged);
 });
 
 function showTaskFlash(label) {
@@ -1350,24 +1416,45 @@ socket.on('ctoTaskAssigned', ({ id, label, deadlineAt }) => {
   pushKillFeed(`📋 TASK: ${label}!`);
 });
 
-socket.on('ctoTaskCompleted', ({ playerId, reward, crownScore, kingId, kingChanged }) => {
+socket.on('ctoTaskCompleted', ({ playerId, reward, score, kingId, kingChanged }) => {
   state.match.ctoTask = null;
   const player = state.match.players.get(playerId);
-  if (player) player.crownScore = crownScore;
-  pushKillFeed(`✅ ${player ? player.name : 'Someone'} completed the task! +${reward} crown score`);
-  if (kingChanged) {
-    state.match.kingId = kingId;
-    const king = state.match.players.get(kingId);
-    pushKillFeed(`👑 ${king ? king.name : 'Someone'} is the new King of the Clan!`);
-    sound.victory();
-  } else {
-    sound.pickup();
-  }
+  pushKillFeed(`✅ ${player ? player.name : 'Someone'} completed the task! +${reward} score`);
+  if (!kingChanged) sound.pickup();
+  applyScoreUpdate(playerId, score, kingId, kingChanged);
 });
 
 socket.on('ctoTaskExpired', () => {
   state.match.ctoTask = null;
   pushKillFeed('⌛ Nobody completed the task in time.');
+});
+
+socket.on('bossWarning', ({ warningSec }) => {
+  state.match.bossEvent = { phase: 'warning', endsAt: Date.now() + warningSec * 1000 };
+  sound.bossWarning();
+  pushKillFeed('🚨 THE BOSS IS COMING! Hide under cover!');
+});
+
+socket.on('bossResolved', ({ hits }) => {
+  state.match.bossEvent = { phase: 'impact', endsAt: Date.now() + 900 };
+  sound.bossStomp();
+  state.shakeAmount = Math.max(state.shakeAmount, 26);
+  hits.forEach(hit => {
+    const target = state.match.players.get(hit.targetId);
+    if (!target) return;
+    target.x = hit.x; target.y = hit.y;
+    if (target.id === state.selfId) { target.renderX = hit.x; target.renderY = hit.y; target.vx = 0; target.vy = 0; triggerDamageFlash(); }
+    target.hp = hit.newHp;
+    target.lives = hit.newLives;
+    target.status = hit.eliminated ? 'eliminated' : (hit.koed ? 'down' : 'active');
+    target.hitFlashTimer = 0.2;
+    target.stunTimer = hit.koed ? 0.6 : 0.22;
+    particles.spawn(target.renderX, target.renderY, hit.koed ? 18 : 8, '#ff0844');
+    pushKillFeed(hit.eliminated
+      ? `💥 ${target.name} didn't take cover and was eliminated!`
+      : `💥 ${target.name} didn't take cover and got flattened!`);
+  });
+  if (hits.length === 0) pushKillFeed('😮‍💨 Everyone made it to cover in time!');
 });
 
 socket.on('playerRespawned', ({ id, x, y, hp }) => {
@@ -1385,27 +1472,25 @@ socket.on('playerLeft', ({ id }) => {
   if (state.screen === 'lobby') renderLobby();
 });
 
-socket.on('matchEnded', ({ reason, standings, winnerId, kingId }) => {
+socket.on('matchEnded', ({ reason, standings, winnerId }) => {
   switchScreen('results');
   const iWon = winnerId === state.selfId;
   document.getElementById('results-title').textContent = iWon ? 'VICTORY!' : 'MATCH OVER';
   const winner = standings.find(s => s.id === winnerId);
-  const king = standings.find(s => s.id === kingId);
-  let subtitle = winner ? `${winner.name} wins${reason === 'time' ? ' on the clock' : ' by knockout'}!` : 'The match has ended.';
-  if (king && king.crownScore > 0) subtitle += ` 👑 King of the Clan: ${king.name} (${king.crownScore} crowns)`;
+  const subtitle = winner ? `👑 ${winner.name} wins with ${winner.score} points!` : 'The match has ended.';
   document.getElementById('results-subtitle').textContent = subtitle;
   if (iWon) sound.victory(); else sound.defeat();
 
   document.getElementById('standings-table').innerHTML = standings.map((s, i) => {
     const avatar = AVATARS[s.avatarId] || AVATARS[0];
-    const crownPrefix = s.id === kingId && s.crownScore > 0 ? '👑 ' : '';
+    const crownPrefix = s.id === winnerId ? '👑 ' : '';
     return `<div class="standings-row ${s.id === winnerId ? 'winner' : ''}">
       <span class="standings-rank">${i + 1}</span>
       <span class="player-dot" style="background:${avatar.color}"></span>
       <span class="standings-name">${crownPrefix}${escapeHtml(s.name)}</span>
+      <span class="standings-stat">${s.score} pts</span>
       <span class="standings-stat">${s.lives}❤</span>
       <span class="standings-stat">DMG ${s.damageDealt}</span>
-      <span class="standings-stat">👑 ${s.crownScore}</span>
     </div>`;
   }).join('');
 });

@@ -7,9 +7,9 @@ import {
   ARENA, ROOM, MATCH, PLAYER, COMBAT, ITEM_TYPES, ITEM_TYPE_KEYS,
   ITEM_RESPAWN_SEC, ITEM_PICKUP_RANGE, THROW_SELF_HIT_GRACE_SEC,
   POWERUPS, POWERUP_TYPE_KEYS, POWERUP_RESPAWN_SEC, POWERUP_PICKUP_RANGE, POWERUP_SPAWNS,
-  CROWN, CROWN_SPAWNS,
-  CTO_TASKS, CTO_TASK_REWARD_CROWN, CTO_TASK_GAP_SEC, CTO_TASK_FIRST_DELAY_SEC, GRAB,
-  ZONES,
+  CROWN, CROWN_SPAWNS, SCORE,
+  CTO_TASKS, CTO_TASK_GAP_SEC, CTO_TASK_FIRST_DELAY_SEC, GRAB,
+  ZONES, BOSS, COVER_OBSTACLES,
   OBSTACLES, ITEM_SPAWNS, TABLE_SPAWNS, TABLE_RESPAWN_SEC, PLAYER_SPAWNS, AVATARS, clamp, normalizeAngleDiff
 } from './shared/constants.js';
 
@@ -59,6 +59,7 @@ class Room {
     this.currentTask = null;
     this.taskTimeoutHandle = null;
     this.thrownPlayers = new Map();
+    this.bossTimeoutHandle = null;
     this.itemSeq = 0;
     this.projSeq = 0;
     this.powerupSeq = 0;
@@ -83,7 +84,7 @@ class Room {
 }
 
 function serializePlayer(p) {
-  return { id: p.id, name: p.name, avatarId: p.avatarId, x: p.x, y: p.y, angle: p.angle, hp: p.hp, lives: p.lives, status: p.status, holding: p.holding, crownScore: p.crownScore };
+  return { id: p.id, name: p.name, avatarId: p.avatarId, x: p.x, y: p.y, angle: p.angle, hp: p.hp, lives: p.lives, status: p.status, holding: p.holding, score: p.score };
 }
 
 function spawnItemAt(room, spawnPoint, type) {
@@ -127,9 +128,12 @@ function collectPowerup(room, player, powerup) {
   }
   room.powerups.delete(powerup.id);
   schedulePowerupRespawn(room, powerup.spawnPoint);
+  player.score = (player.score || 0) + SCORE.powerup;
+  const kingChanged = recomputeKing(room);
   room.io.to(room.code).emit('powerupCollected', {
     id: powerup.id, type: powerup.type, playerId: player.id, newHp: player.hp,
-    buff: spec.buff, buffDurationSec: spec.buffDurationSec, buffMultiplier: spec.buffMultiplier
+    buff: spec.buff, buffDurationSec: spec.buffDurationSec, buffMultiplier: spec.buffMultiplier,
+    score: player.score, kingId: room.kingId, kingChanged
   });
 
   if (room.currentTask && room.currentTask.id === 'collectPowerups') {
@@ -155,7 +159,7 @@ function scheduleCrownRespawn(room) {
 function recomputeKing(room) {
   let king = null;
   for (const p of room.players.values()) {
-    if (!king || p.crownScore > king.crownScore) king = p;
+    if (!king || p.score > king.score) king = p;
   }
   const kingChanged = king && room.kingId !== king.id;
   if (kingChanged) room.kingId = king.id;
@@ -164,18 +168,56 @@ function recomputeKing(room) {
 
 function collectCrown(room, player) {
   room.crown = null;
-  player.crownScore = (player.crownScore || 0) + 1;
+  player.score = (player.score || 0) + SCORE.crown;
   const kingChanged = recomputeKing(room);
 
   scheduleCrownRespawn(room);
   room.io.to(room.code).emit('crownCollected', {
-    playerId: player.id, crownScore: player.crownScore,
+    playerId: player.id, score: player.score,
     kingId: room.kingId, kingChanged
   });
 
   if (room.currentTask && room.currentTask.id === 'collectCrown') {
     completeCtoTask(room, player);
   }
+}
+
+function distanceToObstacle(x, y, ob) {
+  const cx = Math.max(ob.x, Math.min(x, ob.x + ob.w));
+  const cy = Math.max(ob.y, Math.min(y, ob.y + ob.h));
+  return Math.hypot(x - cx, y - cy);
+}
+
+function isNearCover(x, y) {
+  return COVER_OBSTACLES.some(ob => distanceToObstacle(x, y, ob) <= BOSS.coverRadius);
+}
+
+function scheduleBossEvent(room, delaySec) {
+  room.bossTimeoutHandle = setTimeout(() => {
+    if (room.state !== 'playing') return;
+    triggerBossWarning(room);
+  }, delaySec * 1000);
+}
+
+function triggerBossWarning(room) {
+  room.io.to(room.code).emit('bossWarning', { warningSec: BOSS.warningSec });
+  room.bossTimeoutHandle = setTimeout(() => {
+    if (room.state !== 'playing') return;
+    resolveBossStomp(room);
+  }, BOSS.warningSec * 1000);
+}
+
+function resolveBossStomp(room) {
+  const hits = [];
+  for (const player of room.players.values()) {
+    if (player.status !== 'active') continue;
+    if (isNearCover(player.x, player.y)) continue;
+    const angle = Math.random() * Math.PI * 2;
+    const result = applyDamage(room, player, BOSS.damage, Math.cos(angle), Math.sin(angle), BOSS.knockback, null);
+    if (result) hits.push({ targetId: player.id, ...result });
+  }
+  room.io.to(room.code).emit('bossResolved', { hits });
+  scheduleBossEvent(room, BOSS.gapSec);
 }
 
 function scheduleCtoTask(room, delaySec) {
@@ -233,12 +275,12 @@ function completeCtoTask(room, player) {
     room.taskTimeoutHandle = null;
   }
 
-  player.crownScore = (player.crownScore || 0) + CTO_TASK_REWARD_CROWN;
+  player.score = (player.score || 0) + SCORE.taskComplete;
   const kingChanged = recomputeKing(room);
 
   room.io.to(room.code).emit('ctoTaskCompleted', {
-    taskId, playerId: player.id, reward: CTO_TASK_REWARD_CROWN,
-    crownScore: player.crownScore, kingId: room.kingId, kingChanged
+    taskId, playerId: player.id, reward: SCORE.taskComplete,
+    score: player.score, kingId: room.kingId, kingChanged
   });
 
   scheduleCtoTask(room, CTO_TASK_GAP_SEC);
@@ -378,7 +420,7 @@ function beginPlaying(room) {
       lastPunch: 0, lastKick: 0, holding: null, damageDealt: 0, damageTaken: 0, status: 'active',
       invulnerableUntil: Date.now() + MATCH.respawnInvulnSec * 1000,
       speedBuffUntil: 0, speedBuffMultiplier: 1, damageBuffUntil: 0, damageBuffMultiplier: 1,
-      crownScore: 0, taskProgress: 0, taskDone: false, lastDamagedAt: 0, wasOnRooftopAtTaskStart: false,
+      score: 0, taskProgress: 0, taskDone: false, lastDamagedAt: 0, wasOnRooftopAtTaskStart: false,
       carrying: null, carriedBy: null, lastGrab: 0, grabbedAt: 0
     });
   });
@@ -390,6 +432,7 @@ function beginPlaying(room) {
   room.kingId = null;
   room.currentTask = null;
   if (room.taskTimeoutHandle) { clearTimeout(room.taskTimeoutHandle); room.taskTimeoutHandle = null; }
+  if (room.bossTimeoutHandle) { clearTimeout(room.bossTimeoutHandle); room.bossTimeoutHandle = null; }
   ITEM_SPAWNS.forEach(pt => spawnItemAt(room, pt, randomItemType()));
   TABLE_SPAWNS.forEach(pt => spawnItemAt(room, pt, 'table'));
   POWERUP_SPAWNS.forEach(pt => spawnPowerupAt(room, pt, randomPowerupType()));
@@ -407,6 +450,7 @@ function beginPlaying(room) {
 
   room.tickHandle = setInterval(() => tick(room), 50);
   scheduleCtoTask(room, CTO_TASK_FIRST_DELAY_SEC);
+  scheduleBossEvent(room, BOSS.firstDelaySec);
 }
 
 function tick(room) {
@@ -618,14 +662,20 @@ function endMatch(room, reason) {
     clearTimeout(room.taskTimeoutHandle);
     room.taskTimeoutHandle = null;
   }
+  if (room.bossTimeoutHandle) {
+    clearTimeout(room.bossTimeoutHandle);
+    room.bossTimeoutHandle = null;
+  }
   room.currentTask = null;
+  // The winner is whoever has the highest score - independent of lives remaining, so a
+  // player eliminated early can still win the match on score. Lives/damage only break ties.
   const standings = room.playerList
     .map(p => ({
       id: p.id, name: p.name, avatarId: p.avatarId, lives: p.lives,
       damageDealt: Math.round(p.damageDealt), damageTaken: Math.round(p.damageTaken),
-      crownScore: p.crownScore, eliminated: p.status === 'eliminated'
+      score: p.score || 0, eliminated: p.status === 'eliminated'
     }))
-    .sort((a, b) => (b.lives - a.lives) || (a.damageTaken - b.damageTaken) || (b.damageDealt - a.damageDealt));
+    .sort((a, b) => (b.score - a.score) || (b.lives - a.lives) || (a.damageTaken - b.damageTaken) || (b.damageDealt - a.damageDealt));
   const winner = standings[0] || null;
   room.io.to(room.code).emit('matchEnded', { reason, standings, winnerId: winner ? winner.id : null, kingId: room.kingId });
 }
@@ -643,7 +693,7 @@ function joinPlayerToRoom(room, socket, name, avatarId, isHost) {
     lastPunch: 0, lastKick: 0, invulnerableUntil: 0, holding: null,
     damageDealt: 0, damageTaken: 0,
     speedBuffUntil: 0, speedBuffMultiplier: 1, damageBuffUntil: 0, damageBuffMultiplier: 1,
-    crownScore: 0, taskProgress: 0, taskDone: false, lastDamagedAt: 0, wasOnRooftopAtTaskStart: false,
+    score: 0, taskProgress: 0, taskDone: false, lastDamagedAt: 0, wasOnRooftopAtTaskStart: false,
       carrying: null, carriedBy: null, lastGrab: 0, grabbedAt: 0
   };
 
@@ -887,7 +937,13 @@ io.on('connection', socket => {
       thrownBy: player.id, traveled: 0
     });
 
-    room.io.to(room.code).emit('playerThrown', { carrierId: player.id, targetId: thrown.id, x, y, angle: player.angle });
+    player.score = (player.score || 0) + SCORE.throwPlayer;
+    const kingChanged = recomputeKing(room);
+
+    room.io.to(room.code).emit('playerThrown', {
+      carrierId: player.id, targetId: thrown.id, x, y, angle: player.angle,
+      score: player.score, kingId: room.kingId, kingChanged
+    });
 
     if (room.currentTask && room.currentTask.id === 'throwPlayers') {
       player.taskProgress = (player.taskProgress || 0) + 1;

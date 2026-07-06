@@ -38,7 +38,14 @@ export const CTO_TASKS = [
   { id: 'collectCrown', label: 'Collect the hidden crown', target: 1, durationSec: 30 },
   { id: 'itemKo', label: 'KO a player with a thrown item', target: 1, durationSec: 30 }
 ];
-export const CTO_TASK_REWARD_CROWN = 2;
+// Scoring: the match winner is whoever has the highest score, completely independent of
+// lives remaining - even a player who was eliminated early can still win on score.
+export const SCORE = {
+  crown: 1000,
+  taskComplete: 300,
+  throwPlayer: 100,
+  powerup: 20
+};
 export const CTO_TASK_GAP_SEC = 8;
 export const CTO_TASK_FIRST_DELAY_SEC = 8;
 
@@ -160,6 +167,10 @@ export const ZONE_OBSTACLES = [...LOBBY_OBSTACLES, ...TERRACE_OBSTACLES, ...PARK
 
 export const OBSTACLES = [...DESKS, ...PARTITIONS, ...FLOOR_WALLS, ...ZONE_OBSTACLES];
 
+// Everything that counts as "cover" from the Boss stomp - furniture and trees, but not the
+// zone-divider walls (you can't hide inside a wall).
+export const COVER_OBSTACLES = [...DESKS, ...PARTITIONS, ...ZONE_OBSTACLES];
+
 // Walking onto a staircase hotspot teleports the player to its target point.
 export const STAIRCASES = [
   { id: 'main-up', x: 770, y: 950, w: 60, h: 45, targetX: 800, targetY: 1110, arrow: '▲', to: 'ROOFTOP' },
@@ -210,6 +221,18 @@ export const CROWN_SPAWNS = [
   { x: 300, y: 1850 }, { x: 800, y: 2400 }, { x: 1200, y: 2900 }
 ];
 export const CROWN = { pickupRange: 40, respawnSec: 14, color: '#ffd700' };
+
+// The Boss: a periodic event visible to every player regardless of which area they're in.
+// A warning plays, then anyone not near cover (a desk, partition, bench, table, or tree)
+// takes a heavy stomp hit.
+export const BOSS = {
+  firstDelaySec: 40,
+  gapSec: 55,
+  warningSec: 5,
+  coverRadius: 70,
+  damage: 60,
+  knockback: 150
+};
 
 export const AVATARS = [
   { id: 0, name: 'Red', color: '#ff6b6b', accessory: 'tie' },
